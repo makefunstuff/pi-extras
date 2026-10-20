@@ -17,13 +17,44 @@
 // Rows are appended as runs finish, so an interrupted series keeps what it measured; finished
 // (task, round) pairs are skipped on the next call.
 import { join } from "node:path";
-import { armSet, pickTickets, type Arm, type ArmConfig } from "./lib/arms.ts";
+import { armSet, pickTickets, type Arm, type ArmConfig, type ArmSet } from "./lib/arms.ts";
 import { makeAgentDir, runSeries } from "./lib/run.ts";
 import { cacheDirFor, flag, opt, useTmpDir } from "./lib/util.ts";
 
+// Bad input is a one-line message, not a stack trace: this is a long-running series, and the line
+// that says what to fix is what a person reads. A typo in a flag name is refused too — an unknown
+// flag is otherwise ignored, and a silently ignored `--task` (for `--tasks`) would run every ticket.
+const FLAGS = ["bench", "tasks", "arms", "rounds", "first", "model", "out", "ext", "workers", "timeout", "dry-run"];
+function die(msg: string): never {
+	console.error(msg);
+	process.exit(2);
+}
+function numOpt(name: string, def: number, min = 1): number {
+	const raw = opt(name, String(def)) as string;
+	const n = Number(raw);
+	if (!Number.isInteger(n) || n < min) die(`--${name} ${raw}: expected a whole number of at least ${min}`);
+	return n;
+}
+const unknown = process.argv.slice(2).map((a) => a.split("=")[0]).find((a) => a.startsWith("--") && !FLAGS.includes(a.slice(2)));
+if (unknown) die(`unknown option ${unknown}: ${FLAGS.map((f) => `--${f}`).join(" ")}`);
+
 const dry = flag("dry-run");
-const set = armSet(opt("bench", "pi-extras"));
-const tasks = pickTickets(set.ticketRoot, opt("tasks", "all"));
+const rounds = numOpt("rounds", 1);
+const firstRound = numOpt("first", 1);
+const workers = numOpt("workers", 2);
+const timeoutS = numOpt("timeout", 1800, 1);
+let set: ArmSet;
+try {
+	set = armSet(opt("bench", "pi-extras") as string);
+} catch (e) {
+	die((e as Error).message);
+}
+let tasks: ReturnType<typeof pickTickets>;
+try {
+	tasks = pickTickets(set.ticketRoot, opt("tasks", "all") as string);
+} catch (e) {
+	die((e as Error).message);
+}
 const want = opt("arms", "")
 	.split(",")
 	.map((s) => s.trim())
@@ -54,12 +85,12 @@ for (const arm of arms) {
 	}
 	agentDir ||= makeAgentDir(cache, set.cacheName);
 	const outPath = opt("out", "") || join(set.resultsRoot, "raw", `${arm.name}.jsonl`);
-	console.log(`== ${set.name} / ${arm.name}: ${tasks.map((t) => t.name).join(", ")} x ${opt("rounds", "1")} round(s), model ${arm.model ?? opt("model", set.defaultModel)}${dry ? " (dry run)" : ""}`);
+	console.log(`== ${set.name} / ${arm.name}: ${tasks.map((t) => t.name).join(", ")} x ${rounds} round(s), model ${arm.model ?? opt("model", set.defaultModel)}${dry ? " (dry run)" : ""}`);
 	const rows = await runSeries({
 		arm: arm.name,
 		tickets: tasks,
-		rounds: Number(opt("rounds", "1")),
-		firstRound: Number(opt("first", "1")),
+		rounds,
+		firstRound,
 		outPath,
 		cache,
 		agentDir,
@@ -68,8 +99,8 @@ for (const arm of arms) {
 		extensionFactories: arm.factories ? (ctx) => arm.factories(ctx, cfg) : undefined,
 		env: arm.env ? (ctx) => arm.env!(ctx, cfg) : undefined,
 		hooks: arm.hooks ? armHooks(arm) : undefined,
-		workers: Math.min(Number(opt("workers", "2")), arm.maxWorkers ?? Number(opt("workers", "2"))),
-		timeoutS: Number(opt("timeout", "1800")),
+		workers: Math.min(workers, arm.maxWorkers ?? workers),
+		timeoutS,
 		dryRun: dry,
 		fields: { bench: set.name, ...arm.fields },
 	});

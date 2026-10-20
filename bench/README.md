@@ -1,9 +1,10 @@
 # The shared bench
 
-One bench for every extension and experiment in this repo. It runs tickets against **pi in-process,
-through pi's own SDK** (`createAgentSession`), grades the final tree with the ticket's hidden
-`node:test` tests, and appends one row per run to a `.jsonl` file. Everything is TypeScript and runs
-on node (no build step: node strips the types).
+The bench of this repo: it runs tickets against **pi in-process, through pi's own SDK**
+(`createAgentSession`), grades the final tree with the ticket's hidden `node:test` tests, and appends
+one row per run to a `.jsonl` file. Everything is TypeScript and runs on node (no build step: node
+strips the types). `--bench pi-extras` runs **every** extension against plain pi on the shared
+tickets, so an extension's effect is one flag away.
 
 ```bash
 node bench/run.ts --bench pi-extras --tasks all --arms off,verify-gate --rounds 2
@@ -19,6 +20,15 @@ Six extension benches and two experiment benches used to be separate programs (f
 Python), each with its own copy of: seeding a repo, running pi, reading a transcript, grading,
 tabulating, and each with its own ticket format. That is what lives here instead, so an arm of one
 experiment and an arm of another are the same shape and land in the same tables.
+
+Five extensions still keep an `extensions/<name>/bench/` beside it. What is in those is what this
+bench cannot do and what their recorded rows were measured with: offline replays of real pi sessions
+(`local-edit/bench/replay.mjs`, `loop-guard/bench/replay.ts`, `thinking-guard/bench/replay.ts`),
+forced-trap injection (`loop-guard/bench/run.ts --inject`), a two-sequence curriculum whose traps are
+hidden from the agent (`lessons/bench/`), and per-extension ticket sets and prompt styles
+(`verify-gate/bench/`, `local-edit/bench/`). They are TypeScript on the same SDK, and each
+extension's README table points at its own rows — recorded data. **New measurements go here**
+(`--bench pi-extras`), not into a sixth copy: `lib/arms.ts` is where an extension joins the matrix.
 
 pi runs in-process, not as a subprocess: an extension can be handed a config for one run
 (`extensionFactories`), which an environment variable cannot do when a whole series shares one

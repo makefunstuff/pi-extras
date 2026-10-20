@@ -8,7 +8,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { selftestAll } from "./lib/tickets.ts";
+import { selftestAll, ticketNames } from "./lib/tickets.ts";
 import { useTmpDir } from "./lib/util.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +18,12 @@ const roots = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const bad = [];
 for (const root of roots.length ? roots : [join(HERE, "tickets")]) {
 	console.log(`== ${root}`);
+	// A root with no tickets is a typo in the path, not a run with nothing wrong in it: it must not
+	// print "tickets ok" and turn CI into a check of nothing.
+	if (!ticketNames(root).length) {
+		console.error(`no tickets in ${root} (for the long tickets: node experimental/d3-context/bench/gen-long-tasks.ts)`);
+		process.exit(1);
+	}
 	bad.push(...selftestAll(root));
 }
 if (bad.length) {

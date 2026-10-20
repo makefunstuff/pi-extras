@@ -225,10 +225,13 @@ pi install "$PWD"              # use your checkout as the installed package
   `PI_EXTRAS_SMOKE_CONFIG=empty|copy` picks the config, `PI_EXTRAS_SMOKE_INSTALL=path` skips
   the git install, `PI_EXTRAS_SMOKE_MODEL=provider/id` runs
   the first step on a real model instead of the mock.
-- **Bench**: [`bench/`](bench/README.md) is one shared bench for every extension and experiment:
-  tickets (`issue.md`, `repo/`, `hidden.test.ts`, `ref/`), arms, pi driven in-process through its
-  SDK (`createAgentSession`), and reports over recorded rows. `node bench/run.ts --bench pi-extras`,
-  `--bench d3-context`; `node bench/selftest.ts` checks the tickets without a model, and
+- **Bench**: [`bench/`](bench/README.md) is the shared bench: tickets (`issue.md`, `repo/`,
+  `hidden.test.ts`, `ref/`), arms, pi driven in-process through its
+  SDK (`createAgentSession`), and reports over recorded rows. `node bench/run.ts --bench pi-extras`
+  runs **every** extension against plain pi, `--bench d3-context` the experiment; five extensions
+  keep an `extensions/<name>/bench/` beside it for what only they measure (offline replay of real
+  sessions, forced-trap injection, hidden curricula) — TypeScript on the same SDK, and the source of
+  their recorded tables. `node bench/selftest.ts` checks the tickets without a model, and
   `--dry-run` checks the harness the same way.
 - **Dependencies**: runtime packages an extension imports go in `dependencies`. pi provides
   `@earendil-works/pi-*` and `typebox` itself: import them, never list them in `dependencies` or
