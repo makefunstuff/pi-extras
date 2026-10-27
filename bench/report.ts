@@ -13,7 +13,14 @@ import { coreTable, costTable, editTable, loadArms, passRate, section, writeSumm
 import { opt } from "./lib/util.ts";
 
 const args = process.argv.slice(2);
-const set = armSet(args.reduce((a: string, s, i, all) => (all[i - 1] === "--bench" ? s : a), ""));
+// A bad --bench is a one-line message, not a stack trace.
+let set: ReturnType<typeof armSet>;
+try {
+	set = armSet(args.reduce((a: string, s, i, all) => (all[i - 1] === "--bench" ? s : a), "pi-extras"));
+} catch (e) {
+	console.error((e as Error).message);
+	process.exit(2);
+}
 const out = opt("out", join("bench", "results", set.name, "summary.md"))!;
 const arms = [...loadArms(join(set.resultsRoot, "raw")).entries()];
 if (!arms.length) {
