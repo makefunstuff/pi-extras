@@ -5,7 +5,7 @@
 //   extension(pi as any);
 //   pi.tools.get("my_tool")      registered tool definitions, by name
 //   pi.commands.get("my-cmd")    registered commands, by name
-//   pi.providers.get("name")     registered providers, by name
+//   pi.providers.get("name")     registered providers, by name (unregisterProvider deletes one)
 //   await pi.emit("session_start", event, ctx)   calls every handler, returns their results
 //
 // Any other API method is accepted and recorded in `calls`, so extensions using parts of the API
@@ -39,6 +39,7 @@ export function fakePi(): FakePi {
 		registerTool: (def: any) => void state.tools.set(def.name, def),
 		registerCommand: (name: string, def: any) => void state.commands.set(name, def),
 		registerProvider: (name: string, def: any) => void state.providers.set(name, def),
+		unregisterProvider: (name: string) => void state.providers.delete(name),
 		registerFlag: (name: string, def: any) => void state.flags.set(name, def),
 		getFlag: (name: string) => state.flags.get(name)?.default,
 		on: (event: string, handler: (...args: any[]) => any) => {
