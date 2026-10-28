@@ -28,6 +28,10 @@ export default function codemodeSteer(pi: ExtensionAPI, options: SteerOptions = 
 
 	const codemodeActive = () => pi.getActiveTools().includes("codemode");
 	const profile = (ctx: ExtensionContext): SteerProfile => profileFor(ctx.model, cfg);
+	// Only `direct` tools are declared next to codemode and callable from a script. `model-only`
+	// tools (tool_search, codemode itself) cannot be called from a script, so steering them into
+	// codemode would point the model at something that cannot work.
+	const isDirect = (name: string) => pi.getAllTools().find((tool) => tool.name === name)?.exposure === "direct";
 
 	pi.on("session_start", () => {
 		state.direct = state.blocks = 0;
@@ -45,7 +49,7 @@ export default function codemodeSteer(pi: ExtensionAPI, options: SteerOptions = 
 
 	pi.on("tool_call", (event, ctx) => {
 		if (!codemodeActive() || event.parentToolCallId) return;
-		if (event.toolName === "codemode" || BYPASS_TOOLS.has(event.toolName)) return;
+		if (BYPASS_TOOLS.has(event.toolName) || !isDirect(event.toolName)) return;
 		state.direct++;
 		if (cfg.mode === "nudge") {
 			if (!state.nudged && state.direct > cfg.after) state.pending = true;

@@ -52,6 +52,11 @@ While `codemode` is active:
    prompt the extension gives up and lets the model continue directly, so a model that cannot
    write a script is never stuck.
 
+Only tools whose exposure is `direct` are counted and blocked. `model-only` tools such as
+`tool_search` and `codemode` itself are declared to the model but cannot be called from a script,
+so steering them into codemode would point the model at something that cannot work; they are left
+alone, as are a few interactive tools.
+
 Modes:
 
 | `PI_CODEMODE_STEER` | behavior |
@@ -70,8 +75,10 @@ Settings:
 | `PI_CODEMODE_STEER_BLOCKS` | `2` | blocked direct calls per prompt before giving up |
 | `PI_CODEMODE_STEER_PROFILE` | `auto` | `auto`, `cloud` or `local`; overrides detection |
 
-`/codemode-steer` shows the mode, the current prompt's counters and the detected profile. To
-unload it: `"-extensions/codemode-steer/index.ts"` in the package's `extensions` filter.
+The extension is on for every model once the package is installed; the measurement below is
+DeepSeek Flash only. For a long, strictly sequential task where direct tools are wanted, use
+`PI_CODEMODE_STEER=nudge`, `hint` or `off`. `/codemode-steer` shows the mode, the current prompt's
+counters and the detected profile. To unload it: `"-extensions/codemode-steer/index.ts"` in the package's `extensions` filter.
 
 ## Results
 
@@ -88,7 +95,7 @@ the work. No run hit the give-up limit; the four blocks were enough.
 
 A diagnostic `nudge` run on the same 3 tickets with the same threshold (1 round, 3 runs) passed
 3/3 but made only 1 codemode call of 24 (4.2 %) — better than nothing, much weaker than `enforce`.
-That is why `enforce` is the default.
+That is why `enforce` is the default. The nudge rows are in `bench/results/nudge.jsonl`.
 
 **Local models are not measured here.** The local endpoints (`llama.cpp`, Strata, vLLM) were not
 reachable from the machine that ran this eval, and the task forbade starting or switching GPU

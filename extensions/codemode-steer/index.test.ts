@@ -6,9 +6,19 @@ import { isLocalModel, isLocalUrl, readConfig, type SteerConfig } from "./steer.
 
 const config = (over: Partial<SteerConfig> = {}): SteerConfig => ({ mode: "enforce", after: 4, maxBlocks: 2, profile: "auto", ...over });
 
-function setup(over: Partial<SteerConfig> = {}, active = ["read", "bash", "edit", "write", "codemode"]) {
+const TOOLS = [
+	{ name: "read", exposure: "direct" },
+	{ name: "bash", exposure: "direct" },
+	{ name: "edit", exposure: "direct" },
+	{ name: "write", exposure: "direct" },
+	{ name: "ask_question", exposure: "direct" },
+	{ name: "codemode", exposure: "model-only" },
+	{ name: "tool_search", exposure: "model-only" },
+];
+function setup(over: Partial<SteerConfig> = {}, active = ["read", "bash", "edit", "write", "codemode", "tool_search"], tools = TOOLS) {
 	const pi = fakePi();
 	(pi as any).getActiveTools = () => active;
+	(pi as any).getAllTools = () => tools;
 	codemodeSteer(pi as any, { config: config(over) });
 	return pi;
 }
@@ -93,6 +103,17 @@ test("enforce: codemode calls and calls made inside a script are never blocked",
 	assert.deepEqual(await pi.emit("tool_call", call("ask_question"), cloud()), [undefined]);
 	const [blocked] = await pi.emit("tool_call", call("bash"), cloud());
 	assert.equal(blocked.block, true);
+});
+
+test("model-only tools such as tool_search are never counted or blocked", async () => {
+	const pi = setup({ after: 0, maxBlocks: 2 });
+	for (let i = 0; i < 5; i++) assert.deepEqual(await pi.emit("tool_call", call("tool_search"), cloud()), [undefined]);
+	assert.deepEqual(await pi.emit("tool_call", call("codemode"), cloud()), [undefined]);
+	// an unknown tool is not treated as direct either: fail-safe, do not trap it
+	assert.deepEqual(await pi.emit("tool_call", call("mystery"), cloud()), [undefined]);
+	const [blocked] = await pi.emit("tool_call", call("read"), cloud());
+	assert.equal(blocked.block, true);
+	assert.match(blocked.reason, /1 direct tool calls are enough/);
 });
 
 test("enforce: after maxBlocks the model is left alone, and a new prompt starts over", async () => {

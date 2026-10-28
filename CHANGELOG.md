@@ -8,7 +8,8 @@ All versions of pi-extras. The package is installed from git
 - **`codemode-steer`** (new) — makes models use `codemode` for multi-step work. While codemode is
   active it adds a decision rule, clearer guidelines and an example to the prompt, and in the
   default `enforce` mode blocks direct calls after four (with a two-block give-up limit, so a
-  model that cannot write a script is never stuck). `nudge`, `hint` and `off` are available, and
+  model that cannot write a script is never stuck); model-only tools such as `tool_search` are never
+  blocked, since a script cannot call them. `nudge`, `hint` and `off` are available, and
   local models get a shorter raw-JavaScript hint. Measured on DeepSeek Flash, 3 tickets × 2 rounds:
   **6/6 passed in both arms**, codemode share **0.0 % → 31.7 %**, tool calls 88 → 41, turns 73 → 43.
   Local endpoints were not reachable for the eval; the local profile is unit-tested. The extension

@@ -150,5 +150,5 @@ export function blockReason(profile: SteerProfile, toolName: string, direct: num
 	].join("\n");
 }
 
-/** Tools that are never blocked: codemode itself, and interactive/meta tools a script should not own. */
+/** Interactive/meta direct tools that are never blocked; a script should not own them. */
 export const BYPASS_TOOLS = new Set(["codemode", "ask_question", "ask_user", "question", "exit_plan_mode", "todo_write"]);
