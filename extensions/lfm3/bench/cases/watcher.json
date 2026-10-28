@@ -1,0 +1,226 @@
+[
+  {
+    "id": "tests-pass",
+    "role": "agent",
+    "title": "LFM3 for pi agents and the board: research, POC, integrate",
+    "desc": "Find out where Liquid AI's LFM3 models can serve pi and the herdr board as a cheap, fast local model, prove it with a POC, and integrate it if the POC succeeds.",
+    "mins": 12,
+    "prev": null,
+    "tail": "$ npm test\n> pi-extras@0.1.0 test\n> node test/run-unit.mjs\nunit tests: extensions/lfm3/index.test.ts\n✔ registers the provider (12ms)\n✔ falls back when the server is down (3ms)\nℹ tests 42\nℹ pass 42\nℹ fail 0",
+    "want": "tests",
+    "range": [
+      35,
+      70
+    ]
+  },
+  {
+    "id": "tests-fail",
+    "role": "agent",
+    "title": "Fix the flaky checkout test",
+    "desc": "The checkout test fails about one run in five. Find the race and make it deterministic without weakening the assertions.",
+    "mins": 9,
+    "prev": 30,
+    "tail": "$ node --test tests/checkout.test.ts\n✖ applies the coupon before tax (38ms)\n  AssertionError: expected 18.4 to be 18.5\n✖ 1 test failed\n$ rg -n 'coupon|tax' src/checkout.ts\n42:  const taxed = subtotal * (1 + taxRate)\n43:  const total = taxed - coupon",
+    "want": "failing|fixing|debug",
+    "range": [
+      30,
+      60
+    ]
+  },
+  {
+    "id": "editing",
+    "role": "agent",
+    "title": "Add retry to the upload client",
+    "desc": "Retry uploads twice on 5xx with a short backoff, and cover it with a test.",
+    "mins": 6,
+    "prev": 15,
+    "tail": "● edit(src/upload.ts)\n  @@ -18,7 +18,12 @@\n  -  const res = await fetch(url, init);\n  +  let res = await fetch(url, init);\n  +  for (let attempt = 0; attempt < 2 && res.status >= 500; attempt++) {\n  +    await sleep(100 * 2 ** attempt);\n  +    res = await fetch(url, init);\n  +  }\n  ⎿  Updated src/upload.ts with 5 additions and 1 removal",
+    "want": "edit|change|code|add|implement|writ",
+    "range": [
+      20,
+      55
+    ]
+  },
+  {
+    "id": "permission",
+    "role": "agent",
+    "title": "Clean up the stale cache files",
+    "desc": "Remove the stale build cache under .cache and confirm the next build is clean.",
+    "mins": 3,
+    "prev": 20,
+    "tail": "● bash(rm -rf .cache/build)\n  Allow Bash command?\n  > 1. Yes\n    2. No, tell the agent what to do\n  Waiting for your answer…",
+    "want": "wait|approv|permission|confirm",
+    "range": [
+      15,
+      50
+    ]
+  },
+  {
+    "id": "asks-user",
+    "role": "agent",
+    "title": "Choose the storage format for saved sessions",
+    "desc": "Decide between JSONL and SQLite for saved sessions and implement it.",
+    "mins": 4,
+    "prev": 10,
+    "tail": "I can store sessions as JSONL (simple, greppable) or SQLite (queryable, needs a dependency).\nWhich do you want?\n\n> ",
+    "want": "wait|ask|question|answer|decid",
+    "range": [
+      10,
+      40
+    ]
+  },
+  {
+    "id": "opening-pr",
+    "role": "agent",
+    "title": "Release workflow: update an existing release",
+    "desc": "Make the release workflow update an existing release instead of failing when the tag is already there.",
+    "mins": 24,
+    "prev": 80,
+    "tail": "$ git push -u origin work/12-release-update\nremote: Create a pull request for 'work/12-release-update' on GitHub by visiting:\nremote:   https://github.com/makefunstuff/pi-extras/pull/new/work/12-release-update\n$ gh pr create --fill\nhttps://github.com/makefunstuff/pi-extras/pull/12",
+    "want": "pull request|pr|publish|push|open",
+    "range": [
+      80,
+      97
+    ]
+  },
+  {
+    "id": "reviewing",
+    "role": "reviewer",
+    "title": "Review: LFM3 provider extension",
+    "desc": "Check the new extension against the repo rules, the tests and the claims in its README.",
+    "mins": 11,
+    "prev": 40,
+    "tail": "$ gh pr diff 15 --name-only\nextensions/lfm3/index.ts\nextensions/lfm3/index.test.ts\nextensions/lfm3/README.md\n$ gh pr diff 15 -- extensions/lfm3/index.ts\n+  if (!res.ok) return { content: [{ type: \"text\", text: \"server down\" }] };\n-  throw new Error(`lfm3: ${res.status}`);",
+    "want": "review|check|inspect|read|diff",
+    "range": [
+      30,
+      70
+    ]
+  },
+  {
+    "id": "merge-conflict",
+    "role": "agent",
+    "title": "Bring the release branch up to date",
+    "desc": "Merge the base branch into the work branch and resolve the conflict in package.json.",
+    "mins": 14,
+    "prev": 55,
+    "tail": "$ git merge origin/main\nAuto-merging package.json\nCONFLICT (content): Merge conflict in package.json\nAutomatic merge failed; fix conflicts and then commit the result.\n$ cat package.json | sed -n '1,20p'\n<<<<<<< HEAD\n  \"version\": \"0.1.0\",\n=======\n  \"version\": \"0.2.0\",\n>>>>>>> origin/main",
+    "want": "conflict|merge|resolv",
+    "range": [
+      45,
+      75
+    ]
+  },
+  {
+    "id": "done",
+    "role": "agent",
+    "title": "Document the LFM3 provider",
+    "desc": "Add a README section with the server command, the model name and a fallback note.",
+    "mins": 18,
+    "prev": 90,
+    "tail": "$ npm test\nℹ tests 44\nℹ pass 44\nℹ fail 0\n$ git status --short\n M extensions/lfm3/README.md\n M extensions/lfm3/index.ts\nAll done. The README now has the server command and the model name, and the check passes.",
+    "want": "finish|done|complete|summar|wrap",
+    "range": [
+      90,
+      99
+    ]
+  },
+  {
+    "id": "research",
+    "role": "agent",
+    "title": "Compare GGUF quantizations for CPU inference",
+    "desc": "Measure Q4_0, Q4_K_M and Q8_0 on this machine and pick one for the default.",
+    "mins": 7,
+    "prev": 15,
+    "tail": "● read(/data/jpl/lfm3/notes/quantization.md)\n  ⎿  Read 84 lines\n\n● web_fetch(https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF)\n  ⎿  # LiquidAI/LFM3-1.7B-GGUF\n     QAD Q4_0 GGUF … 1.05 GB\n     Q4_K_M … 1.1 GB\n     Q8_0 … 1.85 GB",
+    "want": "read|research|compar|look|document|measur",
+    "range": [
+      10,
+      45
+    ]
+  },
+  {
+    "id": "building",
+    "role": "agent",
+    "title": "Build llama.cpp with LFM3 support",
+    "desc": "Clone the current llama.cpp, build only the CPU backend, and check that the LFM3 architecture loads.",
+    "mins": 8,
+    "prev": 25,
+    "tail": "$ cmake --build build --target llama-server -j 12\n[ 84%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu.c.o\n[ 91%] Building CXX object src/CMakeFiles/llama.dir/llama-model.cpp.o\n[ 96%] Linking CXX shared library bin/libllama.so\n[100%] Built target llama-server",
+    "want": "build|compil|link|install",
+    "range": [
+      25,
+      55
+    ]
+  },
+  {
+    "id": "committing",
+    "role": "agent",
+    "title": "Commit the watcher bench results",
+    "desc": "Add the raw rows and the summary, then commit them with a clear message.",
+    "mins": 15,
+    "prev": 75,
+    "tail": "$ git add extensions/lfm3/bench/results\n$ git commit -m \"lfm3: watcher bench rows and summary\"\n[work/15-lfm3 1a2b3c4] lfm3: watcher bench rows and summary\n 4 files changed, 812 insertions(+)\n$ git log --oneline -1\n1a2b3c4 lfm3: watcher bench rows and summary",
+    "want": "commit|record|save|stor",
+    "range": [
+      70,
+      92
+    ]
+  },
+  {
+    "id": "waiting-ci",
+    "role": "agent",
+    "title": "Get the PR check green",
+    "desc": "Push the fix and wait for CI; if it fails, read the log and fix it.",
+    "mins": 21,
+    "prev": 70,
+    "tail": "$ gh pr checks 15 --watch\nbuild\tpending\t0\t1m12s\nunit\tpass\t1m04s\ndocs\tpass\t0m48s\nRefreshing checks status every 10 seconds. Press Ctrl+C to quit.",
+    "want": "ci|check|wait|build",
+    "range": [
+      55,
+      85
+    ]
+  },
+  {
+    "id": "stuck-repeat",
+    "role": "agent",
+    "title": "Fix the failing lint rule",
+    "desc": "The new lint rule fails on three files; fix them without disabling the rule.",
+    "mins": 16,
+    "prev": 45,
+    "tail": "$ npm run lint\n✖ 3 problems (3 errors, 0 warnings)\n  src/a.ts:12  no-floating-promises\n  src/b.ts:8   no-floating-promises\n  src/c.ts:44  no-floating-promises\n$ npm run lint\n✖ 3 problems (3 errors, 0 warnings)\n  src/a.ts:12  no-floating-promises\n  src/b.ts:8   no-floating-promises\n  src/c.ts:44  no-floating-promises\n$ npm run lint\n✖ 3 problems (3 errors, 0 warnings)",
+    "want": "retry|repeat|stuck|lint|fix|fail",
+    "range": [
+      30,
+      60
+    ]
+  },
+  {
+    "id": "review-report",
+    "role": "reviewer",
+    "title": "Review: LFM3 for pi agents and the board",
+    "desc": "Check the POC numbers, the gate decision and whether the integration falls back safely.",
+    "mins": 26,
+    "prev": 65,
+    "tail": "## Findings\n1. The bench summary says 21/24 but the rows have 20 passes. (blocking)\n2. The fallback path is tested only with a fake that never fails. (blocking)\n3. README says \"off by default\" but the extension registers the provider on load.\n\nWriting the review to ~/.herdr-projects/reports/native-harness/15/index.html …",
+    "want": "review|report|writ|find",
+    "range": [
+      55,
+      85
+    ]
+  },
+  {
+    "id": "planning",
+    "role": "agent",
+    "title": "Triage the incoming GitHub issues",
+    "desc": "Label each new issue bug or feature, pick the repo, and close duplicates.",
+    "mins": 2,
+    "prev": null,
+    "tail": "I'll start by listing the open issues and checking which ones already have labels.\n\n● bash(gh issue list --state open --limit 30)",
+    "want": "plan|start|list|triage|check",
+    "range": [
+      3,
+      25
+    ]
+  }
+]
