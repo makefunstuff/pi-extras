@@ -18,7 +18,7 @@ writeSummary(
 		section(
 			"Codemode",
 			[
-				"3 tickets (`bulk-rename`, `cli-json`, `config-rename`), DeepSeek Flash. Hidden `node:test` graders; the same eval in every arm. `off` and `codemode-steer` (`enforce`) ran 2 rounds (6 runs each); the `nudge` diagnostic ran 1 round (3 runs).",
+				"3 tickets (`bulk-rename`, `cli-json`, `config-rename`), DeepSeek Flash. Hidden `node:test` graders; the same eval in every arm. `nudge` is the package default; `enforce` is opt-in. `off` and `enforce` ran 2 rounds (6 runs each); `nudge` ran 1 round (3 runs).",
 				"Share is codemode calls / (codemode + direct calls). Steer blocks are direct calls codemode-steer stopped.",
 			],
 			codemodeTable(arms),

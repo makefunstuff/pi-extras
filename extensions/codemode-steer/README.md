@@ -45,9 +45,10 @@ While `codemode` is active:
 1. **Prompt.** Replaces the one-line codemode snippet with a decision rule, one or two guidelines
    and a working example. Local models (detected by provider name or a loopback/private-network
    base URL) get a shorter version and an explicit "raw JavaScript, no markdown fence" hint.
-2. **Call boundary.** In the default `enforce` mode the first `PI_CODEMODE_STEER_AFTER` direct
-   calls (default 4) run normally; further direct calls are blocked with an error that names
-   codemode and shows the script shape. Calls made from inside a script (`parentToolCallId`) and
+2. **Call boundary.** The default `nudge` mode appends one short note after the threshold and never
+   blocks. In opt-in `enforce` mode the first `PI_CODEMODE_STEER_AFTER` direct calls (default 4)
+   run normally; further direct calls are blocked with an error that names codemode and shows the
+   script shape. Calls made from inside a script (`parentToolCallId`) and
    codemode itself are never blocked. After `PI_CODEMODE_STEER_BLOCKS` blocks (default 2) in one
    prompt the extension gives up and lets the model continue directly, so a model that cannot
    write a script is never stuck.
@@ -61,8 +62,8 @@ Modes:
 
 | `PI_CODEMODE_STEER` | behavior |
 |---|---|
-| `enforce` (default) | prompt hints + block direct calls after the threshold, with a give-up limit |
-| `nudge` | prompt hints + one note appended to a tool result after the threshold; never blocks |
+| `nudge` (default) | prompt hints + one note appended to a tool result after the threshold; never blocks |
+| `enforce` | prompt hints + block direct calls after the threshold, with a give-up limit |
 | `hint` | prompt hints only |
 | `off` | does nothing |
 
@@ -70,15 +71,15 @@ Settings:
 
 | variable | default | meaning |
 |---|---:|---|
-| `PI_CODEMODE_STEER` | `enforce` | `off`, `hint`, `nudge`, `enforce` |
+| `PI_CODEMODE_STEER` | `nudge` | `off`, `hint`, `nudge`, `enforce` |
 | `PI_CODEMODE_STEER_AFTER` | `4` | direct calls allowed before steering (0 blocks the first one) |
 | `PI_CODEMODE_STEER_BLOCKS` | `2` | blocked direct calls per prompt before giving up |
 | `PI_CODEMODE_STEER_PROFILE` | `auto` | `auto`, `cloud` or `local`; overrides detection |
 
-The extension is on for every model once the package is installed; the measurement below is
-DeepSeek Flash only. For a long, strictly sequential task where direct tools are wanted, use
-`PI_CODEMODE_STEER=nudge`, `hint` or `off`. `/codemode-steer` shows the mode, the current prompt's
-counters and the detected profile. To unload it: `"-extensions/codemode-steer/index.ts"` in the package's `extensions` filter.
+The extension is on for every model once the package is installed, in `nudge` mode, which never
+blocks; the measurement below is DeepSeek Flash only. For stronger steering set
+`PI_CODEMODE_STEER=enforce`; for a long, strictly sequential task use `hint` or `off`.
+`/codemode-steer` shows the mode, the current prompt's counters and the detected profile. To unload it: `"-extensions/codemode-steer/index.ts"` in the package's `extensions` filter.
 
 ## Results
 
@@ -93,9 +94,9 @@ counters and the detected profile. To unload it: `"-extensions/codemode-steer/in
 Same success, roughly half the calls and turns, and codemode went from never used to a third of
 the work. No run hit the give-up limit; the four blocks were enough.
 
-A diagnostic `nudge` run on the same 3 tickets with the same threshold (1 round, 3 runs) passed
-3/3 but made only 1 codemode call of 24 (4.2 %) — better than nothing, much weaker than `enforce`.
-That is why `enforce` is the default. The nudge rows are in `bench/results/nudge.jsonl`.
+A `nudge` run on the same 3 tickets with the same threshold (1 round, 3 runs) passed 3/3 but made
+only 1 codemode call of 24 (4.2 %). That is the safe default; `enforce` is the opt-in setting for
+stronger steering. The nudge rows are in `bench/results/nudge.jsonl`.
 
 **Local models are not measured here.** The local endpoints (`llama.cpp`, Strata, vLLM) were not
 reachable from the machine that ran this eval, and the task forbade starting or switching GPU

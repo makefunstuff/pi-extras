@@ -12,14 +12,15 @@ All versions of pi-extras. The package is installed from git
   gate, so neither is wired. LFM3-1.7B is registered as an experimental chat model (`lfm3/lfm3-1.7b`, use `:off`).
   Enable with `PI_LFM3=on`; [README](extensions/lfm3/README.md), [gate](extensions/lfm3/bench/GATE.md).
 - **`codemode-steer`** (new) — makes models use `codemode` for multi-step work. While codemode is
-  active it adds a decision rule, clearer guidelines and an example to the prompt, and in the
-  default `enforce` mode blocks direct calls after four (with a two-block give-up limit, so a
-  model that cannot write a script is never stuck); model-only tools such as `tool_search` are never
-  blocked, since a script cannot call them. `nudge`, `hint` and `off` are available, and
-  local models get a shorter raw-JavaScript hint. Measured on DeepSeek Flash, 3 tickets × 2 rounds:
-  **6/6 passed in both arms**, codemode share **0.0 % → 31.7 %**, tool calls 88 → 41, turns 73 → 43.
-  Local endpoints were not reachable for the eval; the local profile is unit-tested. The extension
-  README also recommends a per-model `codemode.mode` in pi. [README](extensions/codemode-steer/README.md)
+  active it adds a decision rule, clearer guidelines and an example to the prompt, and by default
+  appends a nudge after four direct calls. Opt-in `enforce` mode blocks direct calls instead (with
+  a two-block give-up limit, so a model that cannot write a script is never stuck); model-only tools
+  such as `tool_search` are never blocked, since a script cannot call them. `nudge`, `hint` and
+  `off` are available, and local models get a shorter raw-JavaScript hint. Measured on DeepSeek
+  Flash with `enforce`, 3 tickets × 2 rounds: **6/6 passed in both arms**, codemode share
+  **0.0 % → 31.7 %**, tool calls 88 → 41, turns 73 → 43. Local endpoints were not reachable for the
+  eval; the local profile is unit-tested. The extension README also recommends a per-model
+  `codemode.mode` in pi. [README](extensions/codemode-steer/README.md)
 - The shared bench counts codemode and direct calls, codemode errors and codemode-steer blocks in
   every row, and its report has a codemode table.
 - The release workflow updates a release that already exists instead of failing on it. Pushing a tag

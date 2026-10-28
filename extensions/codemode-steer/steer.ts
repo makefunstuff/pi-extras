@@ -3,9 +3,10 @@
 // The problem this addresses: `codemode` is declared next to read/bash/edit/write, but almost every
 // model keeps choosing the direct tools, so a task that could be one script becomes five calls. A
 // prompt rule alone did not change that in the probe (DeepSeek Flash still used four bash calls),
-// so the extension also steers at the call boundary: after a few direct calls it blocks the next
+// so enforce mode also steers at the call boundary: after a few direct calls it blocks the next
 // ones with an error that names codemode and shows the script shape. It gives up after
-// `maxBlocks` blocks per prompt, so a model that cannot write a script is never stuck.
+// `maxBlocks` blocks per prompt, so a model that cannot write a script is never stuck. The default
+// is nudge, which appends the same guidance to a tool result and never blocks.
 
 export type SteerMode = "off" | "hint" | "nudge" | "enforce";
 export type SteerProfile = "cloud" | "local";
@@ -25,14 +26,14 @@ const PROFILES = new Set(["auto", "cloud", "local"]);
 
 /** Read `PI_CODEMODE_STEER`, `_AFTER`, `_BLOCKS`, `_PROFILE`; malformed values fall back. */
 export function readConfig(env: Record<string, string | undefined> = process.env): SteerConfig {
-	const mode = String(env.PI_CODEMODE_STEER ?? "enforce").trim().toLowerCase() as SteerMode;
+	const mode = String(env.PI_CODEMODE_STEER ?? "nudge").trim().toLowerCase() as SteerMode;
 	const num = (v: string | undefined, d: number, min = 0) => {
 		const n = Number(v);
 		return v !== undefined && v !== "" && Number.isFinite(n) ? Math.max(min, Math.floor(n)) : d;
 	};
 	const profile = String(env.PI_CODEMODE_STEER_PROFILE ?? "auto").trim().toLowerCase();
 	return {
-		mode: MODES.has(mode) ? mode : "enforce",
+		mode: MODES.has(mode) ? mode : "nudge",
 		after: num(env.PI_CODEMODE_STEER_AFTER, 4),
 		maxBlocks: num(env.PI_CODEMODE_STEER_BLOCKS, 2),
 		profile: PROFILES.has(profile) ? (profile as SteerConfig["profile"]) : "auto",

@@ -4,6 +4,7 @@ import { fakeCtx, fakePi } from "../../test/lib/fake-pi.ts";
 import codemodeSteer, { CUSTOM_TYPE } from "./index.ts";
 import { isLocalModel, isLocalUrl, readConfig, type SteerConfig } from "./steer.ts";
 
+// Enforcement tests opt in explicitly; the package default (readConfig) is nudge.
 const config = (over: Partial<SteerConfig> = {}): SteerConfig => ({ mode: "enforce", after: 4, maxBlocks: 2, profile: "auto", ...over });
 
 const TOOLS = [
@@ -35,10 +36,10 @@ const local = () => fakeCtx({ model: { provider: "llama.cpp", baseUrl: "http://1
 const call = (name: string, parent?: string) => ({ type: "tool_call", toolName: name, toolCallId: "c1", ...(parent ? { parentToolCallId: parent } : {}) });
 
 test("config: modes, thresholds, profile and malformed values", () => {
-	assert.deepEqual(readConfig({}), { mode: "enforce", after: 4, maxBlocks: 2, profile: "auto" });
+	assert.deepEqual(readConfig({}), { mode: "nudge", after: 4, maxBlocks: 2, profile: "auto" });
 	assert.equal(readConfig({ PI_CODEMODE_STEER: "off" }).mode, "off");
 	assert.equal(readConfig({ PI_CODEMODE_STEER: "nudge" }).mode, "nudge");
-	assert.equal(readConfig({ PI_CODEMODE_STEER: "bogus" }).mode, "enforce");
+	assert.equal(readConfig({ PI_CODEMODE_STEER: "bogus" }).mode, "nudge");
 	assert.deepEqual([readConfig({ PI_CODEMODE_STEER_AFTER: "0", PI_CODEMODE_STEER_BLOCKS: "3" }).after, readConfig({ PI_CODEMODE_STEER_BLOCKS: "3" }).maxBlocks], [0, 3]);
 	assert.equal(readConfig({ PI_CODEMODE_STEER_AFTER: "-4" }).after, 0);
 	assert.equal(readConfig({ PI_CODEMODE_STEER_PROFILE: "local" }).profile, "local");

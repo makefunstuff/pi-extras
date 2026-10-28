@@ -8,8 +8,9 @@ const textOf = (m) => (typeof m.content === "string" ? m.content : (m.content ??
 const hasBlock = (payload) => (payload.messages ?? []).some((m) => m.role === "tool" && /\[codemode-steer\]/.test(textOf(m)));
 
 export default {
-	name: "blocks a fifth direct call and accepts codemode",
+	name: "enforce blocks a fifth direct call and accepts codemode",
 	args: ["--tools", "+codemode", "--no-mcp", "--no-session", "--approve"],
+	env: { PI_CODEMODE_STEER: "enforce" },
 	timeoutMs: 120_000,
 	cwd: () => {
 		const dir = mkdtempSync(join(tmpdir(), "codemode-steer-smoke-"));

@@ -4,11 +4,11 @@
 //   1. Prompt: a clearer codemode snippet, a decision rule (two or more calls -> one script) and
 //      one working example. Local models get a shorter version and an explicit "raw JavaScript,
 //      no markdown fence" hint.
-//   2. Call boundary: in `enforce` mode (the default) the first few direct calls run normally; the
-//      next ones are blocked with a short error that names codemode and shows the script shape.
-//      After `PI_CODEMODE_STEER_BLOCKS` blocks in one prompt the model is left alone again, so a
-//      model that cannot write a script is never stuck. `nudge` mode never blocks: it appends the
-//      same guidance to a tool result. `hint` only changes the prompt.
+//   2. Call boundary: in opt-in `enforce` mode the first few direct calls run normally; the next
+//      ones are blocked with a short error that names codemode and shows the script shape. After
+//      `PI_CODEMODE_STEER_BLOCKS` blocks in one prompt the model is left alone again, so a model
+//      that cannot write a script is never stuck. The default `nudge` mode never blocks: it appends
+//      the same guidance to a tool result. `hint` only changes the prompt.
 //
 // Every state change is per user prompt; callbacks made from inside a codemode script are nested
 // (`parentToolCallId`) and are never blocked.
