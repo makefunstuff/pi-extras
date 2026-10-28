@@ -5,6 +5,18 @@ All versions of pi-extras. The package is installed from git
 
 ## Unreleased
 
+- **New extension `herdr`**: herdr and the herdr-projects board as typed, JSON-returning pi tools,
+  made for codemode. Read-only by default: `herdr_agent_list`, `herdr_agent_read`,
+  `herdr_agent_stuck`, `herdr_workspace_list`, `herdr_pane_list`, `herdr_pane_read`,
+  `herdr_tab_list`, `herdr_board_list`, `herdr_board_details` and `herdr_board_show`. Write tools
+  (`herdr_agent_prompt`, `herdr_board_add`, `herdr_board_tell`, `herdr_board_report`) are marked
+  destructive and stay off unless `PI_HERDR_WRITES=on`; each also needs `confirm: true`. The tools
+  are in one `herdr` namespace with parameter and output schemas, so codemode's `searchTools()` and
+  `describeTool()` find them. `herdr_agent_stuck` uses HRN-15's `lfm3/d1-2b` classifier when that
+  extension is loaded and falls back to herdr's status when it is not. Binaries and the board's data
+  folder come from `PI_HERDR_*` / `HERDR_*` variables, `PATH`, or the board's conventional home
+  folder; no personal path is built in. Tests use fake runners and a fake classifier registry.
+  [README](extensions/herdr/README.md)
 - The release workflow updates a release that already exists instead of failing on it. Pushing a tag
   schedules the workflow twice (the file is on the tag and on the default branch), and the run that
   arrived second on v0.1.0 ended with `HTTP 422 … Release.tag_name already exists`. The release
