@@ -150,6 +150,15 @@ test("hint and off modes never block or nudge", async () => {
 	}
 });
 
+test("without tool metadata nothing is blocked, rather than guessing", async () => {
+	const pi = fakePi();
+	(pi as any).getActiveTools = () => ["read", "bash", "codemode", "tool_search"];
+	(pi as any).getAllTools = () => undefined;
+	codemodeSteer(pi as any, { config: config({ after: 0 }) });
+	for (let i = 0; i < 3; i++) assert.deepEqual(await pi.emit("tool_call", call("tool_search"), cloud()), [undefined]);
+	assert.deepEqual(await pi.emit("tool_call", call("bash"), cloud()), [undefined]);
+});
+
 test("agent_settled records the counters and /codemode-steer reports them", async () => {
 	const pi = setup({ after: 0, maxBlocks: 1 });
 	await pi.emit("tool_call", call("read"), cloud());
