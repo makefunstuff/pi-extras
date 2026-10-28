@@ -5,6 +5,12 @@ All versions of pi-extras. The package is installed from git
 
 ## Unreleased
 
+- **`lfm3`** (new, off by default) — Liquid AI's LFM3 on the CPU. d1-2B answers up to six yes/no
+  and choice questions about one piece of text in one pass, with calibrated probabilities and no
+  generated tokens, as pi classifier `lfm3/d1-2b` and the `lfm3_decide` tool. 40/40 on the bench,
+  median 454 ms, 1.95 GB RSS; the 16-screen Watcher prompt and the title/summary checks failed the
+  gate, so neither is wired. LFM3-1.7B is registered as an experimental chat model (`lfm3/lfm3-1.7b`, use `:off`).
+  Enable with `PI_LFM3=on`; [README](extensions/lfm3/README.md), [gate](extensions/lfm3/bench/GATE.md).
 - **`codemode-steer`** (new) — makes models use `codemode` for multi-step work. While codemode is
   active it adds a decision rule, clearer guidelines and an example to the prompt, and in the
   default `enforce` mode blocks direct calls after four (with a two-block give-up limit, so a
