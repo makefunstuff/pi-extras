@@ -29,7 +29,10 @@ must also pass `confirm: true`.
 
 The read tools call the herdr CLI (`herdr agent list|read`, `workspace list`, `pane list|read`,
 `tab list`) and the board's JSON output (`herdr-projects list|details|show`). Nothing goes through a
-shell: arguments are passed as an array, so a title or agent name is data and never syntax.
+shell: arguments are passed as an array. Board titles, messages and query values are placed after
+`--`, or after `--name=` for option values, so text that starts with `--` is data. herdr 0.9.5 has
+no `--` terminator for `agent prompt` text, so a prompt that would start with `--` is sent with one
+leading space, which keeps it a positional; the rest of the text is unchanged.
 
 ## Codemode
 
@@ -63,9 +66,14 @@ await tools.herdr_board_report({
 });
 ```
 
-A failed call rejects in codemode with a message that starts with its code, for example
-`writes_disabled: …` or `confirmation_required: …`; the tool result also carries
-`{ error: { code, message } }` and `isError: true`.
+A failed call throws, so a codemode script sees a rejected promise with a message that starts
+with its code, for example `writes_disabled: …`, `confirmation_required: …` or
+`agent_not_found: …`. Use `try`/`catch` or `Promise.allSettled()` when a call may fail.
+
+`herdr_agent_prompt` with `wait: true` is allowed to run until herdr's own `--timeout` (the
+`timeoutMs` argument) expires. The extension's process timeout is always longer than that, and
+with no `timeoutMs` the wait defaults to 30 minutes, so a delivered prompt is not killed by the
+normal 20-second CLI limit.
 
 ## Stuck / waiting helper
 

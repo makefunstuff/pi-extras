@@ -75,9 +75,19 @@ function compact<T extends Record<string, unknown>>(value: T): T {
 	return value;
 }
 
-function runOptions(config: HerdrConfig, options: { cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {}): RunOptions {
+/** herdr's parser reads a positional that starts with "-" as an option. Targets and pane ids
+ *  never legitimately do, so reject one rather than letting it become a flag. */
+function dataPositional(value: string, what: string): string {
+	if (value.startsWith("-")) throw new ToolError("invalid_target", `${what} must not start with "-"`);
+	return value;
+}
+
+function runOptions(
+	config: HerdrConfig,
+	options: { cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal; timeoutMs?: number } = {},
+): RunOptions {
 	return {
-		timeoutMs: config.timeoutMs,
+		timeoutMs: options.timeoutMs ?? config.timeoutMs,
 		maxOutput: config.maxOutput,
 		cwd: options.cwd,
 		env: options.env,
@@ -85,11 +95,25 @@ function runOptions(config: HerdrConfig, options: { cwd?: string; env?: NodeJS.P
 	};
 }
 
-function herdrFailure(config: HerdrConfig, result: CommandResult): never {
+function envelopeError(value: unknown): ToolError | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const envelope = value as RawRecord;
+	if (!envelope.error) return undefined;
+	const error = record(envelope.error);
+	return new ToolError(str(error.code) ?? "herdr_error", str(error.message) ?? JSON.stringify(envelope.error), envelope.error);
+}
+
+function herdrFailure(config: HerdrConfig, result: CommandResult, timeoutMs: number): never {
 	if (result.error) throw new ToolError("herdr_unavailable", `could not run ${config.herdrBin}: ${result.error}`);
-	if (result.timedOut) throw new ToolError("herdr_timeout", `${config.herdrBin} timed out after ${config.timeoutMs} ms`);
+	if (result.timedOut) throw new ToolError("herdr_timeout", `${config.herdrBin} timed out after ${timeoutMs} ms`);
 	if (result.aborted) throw new ToolError("aborted", "the call was aborted");
 	throw new ToolError("herdr_failed", result.stderr.trim() || `${config.herdrBin} exited with ${result.code}`);
+}
+
+interface HerdrRunOptions {
+	signal?: AbortSignal;
+	/** Override the per-call process timeout; prompt --wait needs more than the normal limit. */
+	timeoutMs?: number;
 }
 
 /** Run a herdr command and unwrap its {"id","result"} envelope. Throws ToolError on failure. */
@@ -97,19 +121,21 @@ export async function herdrJson(
 	config: HerdrConfig,
 	run: CommandRunner,
 	args: string[],
-	options: { signal?: AbortSignal } = {},
+	options: HerdrRunOptions = {},
 ): Promise<unknown> {
-	const result = await run(config.herdrBin, args, runOptions(config, options));
+	const timeoutMs = options.timeoutMs ?? config.timeoutMs;
+	const result = await run(config.herdrBin, args, runOptions(config, { ...options, timeoutMs }));
 	const parsed = parseJson(result.stdout);
-	if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-		const envelope = parsed as RawRecord;
-		const error = record(envelope.error);
-		if (envelope.error) {
-			throw new ToolError(str(error.code) ?? "herdr_error", str(error.message) ?? JSON.stringify(envelope.error), envelope.error);
-		}
-		if ("result" in envelope) return envelope.result;
+	const stdoutError = envelopeError(parsed);
+	if (stdoutError) throw stdoutError;
+	if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && "result" in parsed) {
+		return (parsed as RawRecord).result;
 	}
-	if (result.code !== 0) herdrFailure(config, result);
+	if (result.code !== 0) {
+		const stderrError = envelopeError(parseJson(result.stderr));
+		if (stderrError) throw stderrError;
+		herdrFailure(config, result, timeoutMs);
+	}
 	if (parsed !== undefined) return parsed;
 	return result.stdout.trim();
 }
@@ -119,17 +145,21 @@ export async function herdrText(
 	config: HerdrConfig,
 	run: CommandRunner,
 	args: string[],
-	options: { signal?: AbortSignal } = {},
+	options: HerdrRunOptions = {},
 ): Promise<string> {
-	const result = await run(config.herdrBin, args, runOptions(config, options));
+	const timeoutMs = options.timeoutMs ?? config.timeoutMs;
+	const result = await run(config.herdrBin, args, runOptions(config, { ...options, timeoutMs }));
 	const parsed = parseJson(result.stdout);
-	if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-		const envelope = parsed as RawRecord;
-		const error = record(envelope.error);
-		if (envelope.error) throw new ToolError(str(error.code) ?? "herdr_error", str(error.message) ?? JSON.stringify(envelope.error));
-		if (typeof envelope.result === "string") return envelope.result;
+	const stdoutError = envelopeError(parsed);
+	if (stdoutError) throw stdoutError;
+	if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof (parsed as RawRecord).result === "string") {
+		return (parsed as RawRecord).result as string;
 	}
-	if (result.code !== 0) herdrFailure(config, result);
+	if (result.code !== 0) {
+		const stderrError = envelopeError(parseJson(result.stderr));
+		if (stderrError) throw stderrError;
+		herdrFailure(config, result, timeoutMs);
+	}
 	return result.stdout;
 }
 
@@ -241,10 +271,11 @@ export async function readAgent(
 ): Promise<{ target: string; text: string; lines: number; source: ReadSource }> {
 	const source = options.source ?? "recent";
 	const lines = options.lines ?? 80;
+	const safeTarget = dataPositional(target, "target");
 	const text = await herdrText(
 		config,
 		run,
-		["agent", "read", target, "--source", source, "--lines", String(lines)],
+		["agent", "read", safeTarget, "--source", source, "--lines", String(lines)],
 		{ signal: options.signal },
 	);
 	return { target, text, lines, source };
@@ -266,7 +297,7 @@ export async function listPanes(
 	options: { signal?: AbortSignal } = {},
 ): Promise<PaneSummary[]> {
 	const args = ["pane", "list"];
-	if (filter.workspace) args.push("--workspace", filter.workspace);
+	if (filter.workspace) args.push("--workspace", dataPositional(filter.workspace, "workspace"));
 	const result = await herdrJson(config, run, args, options);
 	return arrayAt(result, "panes").map(asPane);
 }
@@ -278,7 +309,7 @@ export async function listTabs(
 	options: { signal?: AbortSignal } = {},
 ): Promise<TabSummary[]> {
 	const args = ["tab", "list"];
-	if (filter.workspace) args.push("--workspace", filter.workspace);
+	if (filter.workspace) args.push("--workspace", dataPositional(filter.workspace, "workspace"));
 	const result = await herdrJson(config, run, args, options);
 	return arrayAt(result, "tabs").map(asTab);
 }
@@ -291,10 +322,11 @@ export async function readPane(
 ): Promise<{ paneId: string; text: string; lines: number; source: ReadSource }> {
 	const source = options.source ?? "recent";
 	const lines = options.lines ?? 80;
+	const safePane = dataPositional(paneId, "paneId");
 	const text = await herdrText(
 		config,
 		run,
-		["pane", "read", paneId, "--source", source, "--lines", String(lines)],
+		["pane", "read", safePane, "--source", source, "--lines", String(lines)],
 		{ signal: options.signal },
 	);
 	return { paneId, text, lines, source };
@@ -307,6 +339,17 @@ export interface PromptOptions {
 	signal?: AbortSignal;
 }
 
+/** A prompt that starts with "--" would be read as an option by herdr 0.9.5; one leading space
+ *  keeps it a positional. herdr has no "--" terminator for `agent prompt` text. */
+function promptText(text: string): string {
+	return text.startsWith("--") ? ` ${text}` : text;
+}
+
+/** With --wait, herdr waits for the agent's turn. Give the process longer than the CLI wait,
+ *  or the extension would kill a prompt that has already been delivered. */
+const DEFAULT_WAIT_MS = 30 * 60 * 1000;
+const WAIT_GRACE_MS = 10 * 1000;
+
 export async function promptAgent(
 	config: HerdrConfig,
 	run: CommandRunner,
@@ -314,10 +357,12 @@ export async function promptAgent(
 	text: string,
 	options: PromptOptions = {},
 ): Promise<{ target: string; result: unknown }> {
-	const args = ["agent", "prompt", target, text];
+	const args = ["agent", "prompt", dataPositional(target, "target"), promptText(text)];
 	if (options.wait) args.push("--wait");
 	for (const state of options.until ?? []) args.push("--until", state);
 	if (options.timeoutMs !== undefined) args.push("--timeout", String(options.timeoutMs));
-	const result = await herdrJson(config, run, args, { signal: options.signal });
+	const requested = options.timeoutMs !== undefined && options.timeoutMs > 0 ? options.timeoutMs : undefined;
+	const timeoutMs = options.wait ? Math.max(config.timeoutMs, (requested ?? DEFAULT_WAIT_MS) + WAIT_GRACE_MS) : undefined;
+	const result = await herdrJson(config, run, args, { signal: options.signal, timeoutMs });
 	return { target, result };
 }

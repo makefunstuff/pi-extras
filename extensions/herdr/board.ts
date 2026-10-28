@@ -45,7 +45,10 @@ async function boardJson(
 	signal?: AbortSignal,
 ): Promise<unknown> {
 	const bin = boardBin(config);
-	const result = await run(bin, [...args, "--json"], optionsOf(config, signal));
+	// --json must come before a -- terminator; after it the board would treat it as text.
+	const separator = args.indexOf("--");
+	const withJson = separator < 0 ? [...args, "--json"] : [...args.slice(0, separator), "--json", ...args.slice(separator)];
+	const result = await run(bin, withJson, optionsOf(config, signal));
 	const parsed = parseJson(result.stdout);
 	if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
 		const raw = parsed as RawRecord;
@@ -79,7 +82,7 @@ export async function boardList(
 	const args = ["list"];
 	if (options.archived) args.push("--archived");
 	if (options.all) args.push("--all");
-	if (options.query) args.push("--query", options.query);
+	if (options.query) args.push(`--query=${options.query}`);
 	const result = await boardJson(config, run, args, options.signal);
 	if (!Array.isArray(result)) throw new ToolError("board_bad_output", "the board's list output was not an array");
 	return result;
@@ -91,7 +94,7 @@ export async function boardDetails(
 	id: string,
 	signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
-	return RECORD(await boardJson(config, run, ["details", id], signal));
+	return RECORD(await boardJson(config, run, ["details", "--", id], signal));
 }
 
 export async function boardShow(
@@ -100,7 +103,7 @@ export async function boardShow(
 	id?: string,
 	signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
-	return RECORD(await boardJson(config, run, id ? ["show", id] : ["show"], signal));
+	return RECORD(await boardJson(config, run, id ? ["show", "--", id] : ["show"], signal));
 }
 
 export interface BoardAddOptions {
@@ -118,13 +121,15 @@ export async function boardAdd(
 	title: string,
 	options: BoardAddOptions = {},
 ): Promise<Record<string, unknown>> {
-	const args = ["add", title];
-	if (options.description) args.push("--desc", options.description);
-	if (options.repo) args.push("--repo", options.repo);
+	const args = ["add"];
+	if (options.description !== undefined) args.push(`--desc=${options.description}`);
+	if (options.repo !== undefined) args.push(`--repo=${options.repo}`);
 	if (options.delegate) args.push("--delegate");
-	if (options.after?.length) args.push("--after", options.after.join(","));
+	if (options.after?.length) args.push(`--after=${options.after.join(",")}`);
 	if (options.research === true) args.push("--research");
 	if (options.research === false) args.push("--no-research");
+	// The title is free text and may start with "--"; the board accepts options before "--".
+	args.push("--", title);
 	return RECORD(await boardJson(config, run, args, options.signal));
 }
 
@@ -135,7 +140,7 @@ export async function boardTell(
 	text: string,
 	signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
-	return RECORD(await boardJson(config, run, ["tell", id, text], signal));
+	return RECORD(await boardJson(config, run, ["tell", "--", id, text], signal));
 }
 
 export interface BoardReportOptions {
@@ -154,11 +159,12 @@ export async function boardReport(
 	id: string,
 	options: BoardReportOptions,
 ): Promise<Record<string, unknown>> {
-	const args = ["report", id, "--state", options.state];
+	const args = ["report", "--state", options.state];
 	if (options.kind) args.push("--kind", options.kind);
-	if (options.msg) args.push("--msg", options.msg);
-	if (options.title) args.push("--title", options.title);
+	if (options.msg !== undefined) args.push(`--msg=${options.msg}`);
+	if (options.title !== undefined) args.push(`--title=${options.title}`);
 	if (options.progress !== undefined) args.push("--progress", String(Math.max(0, Math.min(100, Math.round(options.progress)))));
 	if (options.eta !== undefined) args.push("--eta", String(Math.max(0, Math.round(options.eta))));
+	args.push("--", id);
 	return RECORD(await boardJson(config, run, args, options.signal));
 }

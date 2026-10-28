@@ -15,6 +15,10 @@ if [ "$1 $2" = "agent list" ]; then
   printf '%s\\n' '{"id":"cli:agent:list","result":{"agents":[{"name":"sw-a","agent":"pi","agent_status":"blocked","pane_id":"w1:p1","title":"Waiting","focused":false}]}}'
   exit 0
 fi
+if [ "$1 $2" = "agent read" ] && [ "$3" = "nosuch" ]; then
+  printf '%s\\n' '{"id":"cli:agent:read","error":{"code":"agent_not_found","message":"agent target nosuch not found"}}'
+  exit 1
+fi
 if [ "$1 $2" = "agent read" ]; then
   printf '%s\\n' 'Do you want to continue? [y/N]'
   exit 0
@@ -47,11 +51,24 @@ export default {
 			};
 		}
 		const result = body.messages.filter((m) => m.role === "tool").map(textOf).join("\n");
-		assert.match(result, /sw-a/, "the script saw the fake agent");
-		return { content: "FOUND sw-a" };
+		if (n === 1) {
+			assert.match(result, /sw-a/, "the script saw the fake agent");
+			return {
+				toolCalls: [
+					{
+						name: "codemode",
+						arguments: {
+							code: "try { await tools.herdr_agent_read({ target: 'nosuch' }); return 'NO_ERROR'; } catch (e) { return 'CAUGHT ' + e.message; }",
+						},
+					},
+				],
+			};
+		}
+		assert.match(result, /CAUGHT agent_not_found/, "a failed tool call rejects in codemode");
+		return { content: "FOUND sw-a AND CAUGHT agent_not_found" };
 	},
 	check({ stdout }) {
-		assert.match(stdout, /FOUND sw-a/);
+		assert.match(stdout, /FOUND sw-a AND CAUGHT agent_not_found/);
 	},
 	model: MOCK_MODEL,
 };

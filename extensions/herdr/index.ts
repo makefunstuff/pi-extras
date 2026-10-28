@@ -105,18 +105,6 @@ function success(data: unknown, details: unknown = data) {
 	};
 }
 
-function failure(error: unknown) {
-	const code = error instanceof ToolError ? error.code : "herdr_failed";
-	const message = messageOf(error);
-	const body = { error: { code, message } };
-	return {
-		content: [{ type: "text" as const, text: `${code}: ${message}` }],
-		details: body,
-		structuredContent: body as any,
-		isError: true,
-	};
-}
-
 function requireWrite(config: HerdrConfig, confirm: boolean | undefined): void {
 	if (!config.writes) {
 		throw new ToolError(
@@ -137,7 +125,10 @@ function tool<T>(fn: (params: T, signal?: AbortSignal, ctx?: ExtensionToolContex
 		try {
 			return success(await fn(params, signal, ctx));
 		} catch (e) {
-			return failure(e);
+			// Throw instead of returning an isError result: pi turns this into a failed tool result,
+			// and a codemode script gets a rejected promise it can catch (see README).
+			const code = e instanceof ToolError ? e.code : "herdr_failed";
+			throw new Error(`${code}: ${messageOf(e)}`);
 		}
 	};
 }
@@ -334,6 +325,7 @@ export function registerHerdr(pi: ExtensionAPI, options: HerdrExtensionOptions =
 		description:
 			"WRITE: submit a prompt to another herdr agent, optionally waiting for it to reach a state. " +
 			"Off unless PI_HERDR_WRITES=on, and requires confirm: true. Do not use it unless the human asked you to talk to that agent. " +
+			"A prompt that starts with -- gets one leading space, because herdr would otherwise read it as an option. " +
 			"Example: tools.herdr_agent_prompt({ target: 'sw-repo-12', text: 'Please also run the tests', confirm: true }).",
 		promptSnippet: "herdr_agent_prompt: submit a prompt to another agent (write, gated)",
 		parameters: Type.Object({
