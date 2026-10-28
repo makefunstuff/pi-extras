@@ -45,6 +45,10 @@ test("turn counts, call counts and the repeats", () => {
 	const st = sessionStats(entries);
 	assert.equal(st.assistant_turns, 4);
 	assert.equal(st.tool_calls, 4);
+	assert.equal(st.codemode_calls, 0);
+	assert.equal(st.direct_calls, 4);
+	assert.equal(st.codemode_turns, 0);
+	assert.equal(st.codemode_errors, 0);
 	assert.equal(st.tool_errors, 2);
 	assert.equal(st.tool_uniq, 3); // read, edit, bash
 	assert.equal(st.repeat_calls, 1); // the second identical read
@@ -80,6 +84,22 @@ test("token totals, context growth, models and compaction", () => {
 	assert.deepEqual(st.models, ["some-model", "other-model"]);
 	assert.equal(st.custom_messages, 1);
 	assert.equal(st.tips, 2);
+});
+
+test("codemode calls, codemode turns, errors and steer counters", () => {
+	const cm = [
+		{ type: "message", message: { role: "assistant", stopReason: "toolUse", usage: usage(1, 1), content: [call("c1", "codemode", { code: "return 1" }), call("c2", "read", { path: "a" })] } },
+		{ type: "message", message: { role: "toolResult", toolCallId: "c1", toolName: "codemode", content: [text("Script failed")], isError: true } },
+		{ type: "message", message: { role: "toolResult", toolCallId: "c2", toolName: "read", content: [text("a")], isError: false } },
+		{ type: "custom", customType: "codemode-steer", data: { direct: 3, blocks: 2, gaveUp: true } },
+	];
+	const st = sessionStats(cm);
+	assert.equal(st.codemode_calls, 1);
+	assert.equal(st.direct_calls, 1);
+	assert.equal(st.codemode_turns, 1);
+	assert.equal(st.codemode_errors, 1);
+	assert.equal(st.steer_blocks, 2);
+	assert.equal(st.steer_gave_up, 1);
 });
 
 test("calls of a session, and the file paths in a transcript", () => {

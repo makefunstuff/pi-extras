@@ -4,7 +4,8 @@ Extensions that make [pi](https://pi.dev) work better, especially with local mod
 (llama.cpp, Ollama, LM Studio, vLLM…). It is one pi package: install it once, then turn each
 extension on or off on its own.
 
-**Release 0.1.0** (2026-10-20): five extensions, each measured against plain pi — see
+**Release 0.1.0** (2026-10-20): five extensions, each measured against plain pi. The unreleased
+`codemode-steer` adds a sixth — see
 [What each one fixes](#what-each-one-fixes-how-to-enable-it-and-what-it-measured) and
 [CHANGELOG.md](CHANGELOG.md). `lfm3` is new and unreleased; it ships in the same package but is
 off until `PI_LFM3=on`.
@@ -15,6 +16,7 @@ off until `PI_LFM3=on`.
 |---|---|---|
 | [`lessons`](extensions/lessons/README.md) | when something failed and was then fixed, asks for a short cue / lesson / evidence note and keeps it (Hindsight memory, or a local file); at the start of the next task in the same repo, appends only the notes that apply (Jev decides), so the mistake is not repeated. No system-prompt text, no tool | **beta** |
 | [`local-edit`](extensions/local-edit/README.md) | replaces pi's `edit`. It places near misses when exactly one spot fits (indentation ignored, or ≥ 0.95 similar), and on a miss shows the closest lines with line numbers. Every edit returns a compact diff of removed and added lines. It also repairs basename and `path#tag` paths. Same tool schema, so the prompt cache is kept. Cloud results in; local numbers on Strata (reduced sample) | **new** |
+| [`codemode-steer`](extensions/codemode-steer/README.md) | makes models use `codemode` for multi-step work: a clearer prompt with a decision rule and an example, then by default a short nudge on the fifth direct call. Opt-in `enforce` blocks further direct calls with an error that shows the script shape (and gives up after two blocks, so a model that cannot write a script is never stuck; model-only tools such as `tool_search` are never blocked). Cloud measured; local profile unit-tested | **new** |
 | [`loop-guard`](extensions/loop-guard/README.md) | notices blind retries of a failed tool call, repeated no-progress calls and runs that stop on "I'll …" with no tool call, and appends a short correction (never rewrites history, so the prompt cache stays) | stable |
 | [`thinking-guard`](extensions/thinking-guard/README.md) | stops runaway thinking: gives llama.cpp servers a per-request thinking budget, and aborts and re-issues a reply that still thinks too long, with a "stop deliberating, act with a tool" note appended (append-only, so the prompt cache survives) | on for local models |
 | [`lfm3`](extensions/lfm3/README.md) | Liquid AI's LFM3 on CPU: d1-2B answers yes/no and choice questions about one piece of text in one pass, with calibrated probabilities, as a pi classifier and the `lfm3_decide` tool. LFM3-1.7B is registered as an experimental chat model. Off by default (`PI_LFM3=on`). The board's Watcher and task titles were tried and failed the POC, so nothing routes to it | **new, off by default** |
@@ -71,6 +73,41 @@ IQ3_S on Strata** (pi provider `strata/swift-1.5-flash-next-iq3_s`), and its run
 sample against the cloud's. Nothing here was measured on the Qwen3.8-27B that was planned (its
 router was offline), and the partial 27B runs are named where they exist. Raw rows and the full
 method are in each extension's README and `bench/results/summary.md`.
+
+### codemode-steer
+
+**What it fixes.** `codemode` is declared next to `read`, `bash`, `edit` and `write`, and models
+almost never choose it: over 174 recorded sessions it was **2.0 % of tool calls**, and only 22
+sessions used it at all. Local providers do get the tool; the direct tools are simply easier, and
+the one built-in codemode guideline did not change the choice. A strong prompt-only probe still
+produced four `bash` calls and no codemode call on DeepSeek Flash.
+
+**Enable and configure.** On by default once the package is installed, but it only acts while
+`codemode` is active (`"defaultTools": ["+codemode"]`, or `pi --tools +codemode`). `nudge`
+(default) appends one note to the fifth direct call's result; opt-in `enforce` blocks instead, with 2 blocks
+before it gives up; `hint` only changes the prompt; `off` disables it.
+`PI_CODEMODE_STEER_AFTER` and `PI_CODEMODE_STEER_BLOCKS` change the thresholds,
+`PI_CODEMODE_STEER_PROFILE=cloud|local` overrides detection, and `/codemode-steer` shows the
+counters. Local models get a shorter hint that says to write raw JavaScript, not a markdown fence.
+To unload: `"-extensions/codemode-steer/index.ts"`.
+
+**Measured** (3 tickets, 2 rounds, 6 runs/arm, hidden `node:test` graders, DeepSeek Flash):
+
+| arm | hidden tests | tool calls | codemode calls | codemode share | turns |
+|---|---:|---:|---:|---:|---:|
+| off | 6/6 | 88 | 0 | 0.0 % | 73 |
+| codemode-steer (`enforce`, opt-in) | 6/6 | 41 | 13 | 31.7 % | 43 |
+
+- Same success, roughly half the calls and turns. Four direct calls were blocked; no run reached
+  the two-block give-up.
+- The default `nudge` mode on the same tickets passed 3/3 with 1 codemode call of 24 (4.2 %):
+  safe, but enforcement is what moves the choice, so `enforce` stays available as an option.
+- **Local models are not evaluated**: no request was sent to a local or GPU model server (reserved
+  for the owner's tuning), and no local eval was run. The local profile is covered by unit tests;
+  recorded sessions show local Strata Swift already used codemode more than the cloud models
+  (5.5 %), while most other local models used it never.
+- Recommendations for pi (per-model `codemode.mode`, a per-provider opt-out from the codemode
+  grammar) and for local provider config are in the extension README.
 
 ### verify-gate
 
@@ -225,7 +262,7 @@ working Hindsight writes is still open).
 `experimental/d3-context` is an experiment, not part of the installed package manifest: it is
 loaded with `pi -e` and needs `D3_URL`. It recorded a negative result — no gain, higher cost with
 cached providers — and its [README](experimental/d3-context/README.md) and
-[RESULTS.md](experimental/d3-context/RESULTS.md) say what it measured, separately from the five
+[RESULTS.md](experimental/d3-context/RESULTS.md) say what it measured, separately from the
 extensions above. The repo's first experiment, `experimental/llama-native`, is removed in this
 release; see [Removed](#removed).
 

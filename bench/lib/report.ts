@@ -76,6 +76,24 @@ export function coreTable(arms: [string, Row[]][], opts: { cost?: boolean } = {}
 	return tbl(lines);
 }
 
+
+/** Codemode usage: how much of the work went through codemode instead of direct tool calls. */
+export function codemodeTable(arms: [string, Row[]][]): string {
+	const head = ["arm", "runs", "codemode calls", "direct calls", "codemode share", "codemode turns", "codemode errors", "steer blocks"];
+	const lines: string[][] = [head];
+	for (const [arm, rows] of arms) {
+		const p = perf(rows);
+		const cm = p.reduce((a, r) => a + (Number.isFinite(num(r, "codemode_calls")) ? num(r, "codemode_calls") : 0), 0);
+		const direct = p.reduce((a, r) => a + (Number.isFinite(num(r, "direct_calls")) ? num(r, "direct_calls") : 0), 0);
+		const turns = p.reduce((a, r) => a + (Number.isFinite(num(r, "codemode_turns")) ? num(r, "codemode_turns") : 0), 0);
+		const errors = p.reduce((a, r) => a + (Number.isFinite(num(r, "codemode_errors")) ? num(r, "codemode_errors") : 0), 0);
+		const blocks = p.reduce((a, r) => a + (Number.isFinite(num(r, "steer_blocks")) ? num(r, "steer_blocks") : 0), 0);
+		const total = cm + direct;
+		lines.push([arm, String(p.length), String(cm), String(direct), total ? `${((cm / total) * 100).toFixed(1)}%` : "–", String(turns), String(errors), String(blocks)]);
+	}
+	return tbl(lines);
+}
+
 /** Edit discipline: how many edit calls, and how many of them the harness had to reject. */
 export function editTable(arms: [string, Row[]][], opts: { note?: (arm: string, rows: Row[]) => string } = {}): string {
 	const head = ["arm", "runs", "edit calls", "edit calls rejected", "calls per run", "edits per run"];
