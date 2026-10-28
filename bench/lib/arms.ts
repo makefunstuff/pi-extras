@@ -51,6 +51,7 @@ export const EXTENSIONS = {
 	"thinking-guard": ext("extensions/thinking-guard/index.ts"),
 	lessons: ext("extensions/lessons/index.ts"),
 	"local-edit": ext("extensions/local-edit/index.ts"),
+	"codemode-steer": ext("extensions/codemode-steer/index.ts"),
 	"d3-context": ext("experimental/d3-context/extension/index.ts"),
 };
 

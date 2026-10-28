@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { coreTable, costTable, editTable, loadArms, num, passRate, p95, perf, section, stats, writeSummary } from "./report.ts";
+import { codemodeTable, coreTable, costTable, editTable, loadArms, num, passRate, p95, perf, section, stats, writeSummary } from "./report.ts";
 import { appendRow } from "./util.ts";
 
 const t = () => mkdtempSync(join(tmpdir(), "pi-bench-report-"));
@@ -72,6 +72,19 @@ test("the tables carry both naming conventions and say what they mean", () => {
 	// a table with no measured runs prints – rather than a made-up zero
 	const empty = coreTable([["dead", [rows[2]]]]).split("\n");
 	assert.match(empty[2], /–/);
+});
+
+test("the codemode table counts the share and the steer blocks", () => {
+	const cmRows = [
+		{ arm: "off", passed: true, codemode_calls: 0, direct_calls: 8, codemode_turns: 0, codemode_errors: 0, steer_blocks: 0 },
+		{ arm: "steer", passed: true, codemode_calls: 6, direct_calls: 2, codemode_turns: 3, codemode_errors: 1, steer_blocks: 2 },
+	];
+	const lines = codemodeTable([["off", [cmRows[0]]], ["steer", [cmRows[1]]]]).split("\n");
+	assert.match(lines[0], /\| arm \| runs \| codemode calls \| direct calls \| codemode share \|/);
+	assert.match(lines[2], /off +\| 1 +\| 0 +\| 8 +\| 0\.0%/);
+	assert.match(lines[3], /steer +\| 1 +\| 6 +\| 2 +\| 75\.0% +\| 3 +\| 1 +\| 2/);
+	const none = codemodeTable([["old", [{ arm: "old", passed: true }]]]).split("\n");
+	assert.match(none[2], /–/);
 });
 
 test("a summary is a title, sections and tables", () => {

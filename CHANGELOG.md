@@ -5,6 +5,16 @@ All versions of pi-extras. The package is installed from git
 
 ## Unreleased
 
+- **`codemode-steer`** (new) — makes models use `codemode` for multi-step work. While codemode is
+  active it adds a decision rule, clearer guidelines and an example to the prompt, and in the
+  default `enforce` mode blocks direct calls after four (with a two-block give-up limit, so a
+  model that cannot write a script is never stuck). `nudge`, `hint` and `off` are available, and
+  local models get a shorter raw-JavaScript hint. Measured on DeepSeek Flash, 3 tickets × 2 rounds:
+  **6/6 passed in both arms**, codemode share **0.0 % → 31.7 %**, tool calls 88 → 41, turns 73 → 43.
+  Local endpoints were not reachable for the eval; the local profile is unit-tested. The extension
+  README also recommends a per-model `codemode.mode` in pi. [README](extensions/codemode-steer/README.md)
+- The shared bench counts codemode and direct calls, codemode errors and codemode-steer blocks in
+  every row, and its report has a codemode table.
 - The release workflow updates a release that already exists instead of failing on it. Pushing a tag
   schedules the workflow twice (the file is on the tag and on the default branch), and the run that
   arrived second on v0.1.0 ended with `HTTP 422 … Release.tag_name already exists`. The release

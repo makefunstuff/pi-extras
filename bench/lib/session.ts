@@ -9,6 +9,14 @@ import { join } from "node:path";
 export interface SessionStats {
 	assistant_turns: number;
 	tool_calls: number;
+	/** Calls to the codemode tool, and to every other tool (direct calls). */
+	codemode_calls: number;
+	direct_calls: number;
+	codemode_turns: number;
+	codemode_errors: number;
+	/** Blocks and give-ups recorded by codemode-steer custom entries. */
+	steer_blocks: number;
+	steer_gave_up: number;
 	tool_errors: number;
 	tool_uniq: number;
 	edit_calls: number;
@@ -59,7 +67,7 @@ export const keyOf = (name: string, args: any) => JSON.stringify([name, args ?? 
 
 function emptyStats(): SessionStats {
 	return {
-		assistant_turns: 0, tool_calls: 0, tool_errors: 0, tool_uniq: 0, edit_calls: 0, edit_errors: 0, malformed_calls: 0,
+		assistant_turns: 0, tool_calls: 0, codemode_calls: 0, direct_calls: 0, codemode_turns: 0, codemode_errors: 0, steer_blocks: 0, steer_gave_up: 0, tool_errors: 0, tool_uniq: 0, edit_calls: 0, edit_errors: 0, malformed_calls: 0,
 		in_miss: 0, in_hit: 0, in_write: 0, out: 0, reasoning: 0, ctx_peak: 0, ctx_mean: 0, ctx_sum_over_turns: 0, tokens_processed: 0,
 		compactions: 0, compaction_ms: 0, repeat_calls: 0, repeat_max: 0, top_repeats: "—", provider_errors: 0, custom_messages: 0, tips: 0,
 		rereads: 0, reread_paths: 0, reread_cases: [],
@@ -84,6 +92,10 @@ export function sessionStats(entries: any[]): SessionStats {
 		if (e.type === "custom" || e.type === "custom_message") {
 			s.custom_messages++;
 			if (/tip/i.test(String((e as any).customType ?? ""))) s.tips += Number((e as any).data?.count ?? 1);
+			if ((e as any).customType === "codemode-steer") {
+				s.steer_blocks += Number((e as any).data?.blocks ?? 0);
+				if ((e as any).data?.gaveUp) s.steer_gave_up++;
+			}
 		}
 		const m = e.type === "message" ? e.message : undefined;
 		if (!m) continue;
@@ -101,9 +113,14 @@ export function sessionStats(entries: any[]): SessionStats {
 			s.provider_errors += m.stopReason === "error" ? 1 : 0;
 			if (m.stopReason === "error") s.error_turns++;
 			if (m.errorMessage) s.last_error = m.errorMessage;
+			let madeCodemode = false;
 			for (const c of m.content ?? []) {
 				if (c?.type === "toolCall") {
 					s.tool_calls++;
+					if (c.name === "codemode") {
+						s.codemode_calls++;
+						madeCodemode = true;
+					} else s.direct_calls++;
 					names.add(c.name);
 					const k = callKey(c);
 					counts.set(k, (counts.get(k) ?? 0) + 1);
@@ -119,11 +136,13 @@ export function sessionStats(entries: any[]): SessionStats {
 				// a tool call the model wrote as plain text instead of calling
 				if (c?.type === "text" && (String(c.text ?? "").includes("<tool_call>") || String(c.text ?? "").includes("<function="))) s.malformed_calls++;
 			}
+			if (madeCodemode) s.codemode_turns++;
 		} else if (m.role === "toolResult") {
 			s.edit_calls += m.toolName === "edit" ? 1 : 0;
 			if (m.isError) {
 				s.tool_errors++;
 				s.edit_errors += m.toolName === "edit" ? 1 : 0;
+			if (m.toolName === "codemode") s.codemode_errors++;
 				const txt = textOf(m.content);
 				if (txt.includes("Validation failed") || (/\bnot found\b/i.test(txt) && /\btool\b/i.test(txt))) s.malformed_calls++;
 			}

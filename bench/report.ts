@@ -9,7 +9,7 @@
 // in `experimental/d3-context/bench/context-report.ts`).
 import { join } from "node:path";
 import { armSet } from "./lib/arms.ts";
-import { coreTable, costTable, editTable, loadArms, passRate, section, writeSummary } from "./lib/report.ts";
+import { codemodeTable, coreTable, costTable, editTable, loadArms, passRate, section, writeSummary } from "./lib/report.ts";
 import { opt } from "./lib/util.ts";
 
 const args = process.argv.slice(2);
@@ -34,6 +34,7 @@ writeSummary(
 			],
 			coreTable(arms, { cost: true }),
 		),
+		section("Codemode", ["How much of the work went through codemode instead of direct tool calls. Share is codemode calls / (codemode + direct calls); steer blocks are direct calls codemode-steer stopped."], codemodeTable(arms)),
 		section("Edits", ["How much of the work is harness-rejected edits."], editTable(arms)),
 		section("Cost", ["Tokens per run, and the cost of a passed task at the endpoint's own accounting."], costTable(arms)),
 	],
