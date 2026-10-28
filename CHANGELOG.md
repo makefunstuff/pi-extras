@@ -17,6 +17,12 @@ All versions of pi-extras. The package is installed from git
   folder come from `PI_HERDR_*` / `HERDR_*` variables, `PATH`, or the board's conventional home
   folder; no personal path is built in. Tests use fake runners and a fake classifier registry.
   [README](extensions/herdr/README.md)
+- **`lfm3`** (new, off by default) — Liquid AI's LFM3 on the CPU. d1-2B answers up to six yes/no
+  and choice questions about one piece of text in one pass, with calibrated probabilities and no
+  generated tokens, as pi classifier `lfm3/d1-2b` and the `lfm3_decide` tool. 40/40 on the bench,
+  median 454 ms, 1.95 GB RSS; the 16-screen Watcher prompt and the title/summary checks failed the
+  gate, so neither is wired. LFM3-1.7B is registered as an experimental chat model (`lfm3/lfm3-1.7b`, use `:off`).
+  Enable with `PI_LFM3=on`; [README](extensions/lfm3/README.md), [gate](extensions/lfm3/bench/GATE.md).
 - The release workflow updates a release that already exists instead of failing on it. Pushing a tag
   schedules the workflow twice (the file is on the tag and on the default branch), and the run that
   arrived second on v0.1.0 ended with `HTTP 422 … Release.tag_name already exists`. The release

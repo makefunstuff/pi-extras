@@ -6,7 +6,8 @@ extension on or off on its own.
 
 **Release 0.1.0** (2026-10-20): five extensions, each measured against plain pi — see
 [What each one fixes](#what-each-one-fixes-how-to-enable-it-and-what-it-measured) and
-[CHANGELOG.md](CHANGELOG.md).
+[CHANGELOG.md](CHANGELOG.md). `lfm3` is new and unreleased; it ships in the same package but is
+off until `PI_LFM3=on`.
 
 ## Extensions
 
@@ -16,6 +17,7 @@ extension on or off on its own.
 | [`local-edit`](extensions/local-edit/README.md) | replaces pi's `edit`. It places near misses when exactly one spot fits (indentation ignored, or ≥ 0.95 similar), and on a miss shows the closest lines with line numbers. Every edit returns a compact diff of removed and added lines. It also repairs basename and `path#tag` paths. Same tool schema, so the prompt cache is kept. Cloud results in; local numbers on Strata (reduced sample) | **new** |
 | [`loop-guard`](extensions/loop-guard/README.md) | notices blind retries of a failed tool call, repeated no-progress calls and runs that stop on "I'll …" with no tool call, and appends a short correction (never rewrites history, so the prompt cache stays) | stable |
 | [`thinking-guard`](extensions/thinking-guard/README.md) | stops runaway thinking: gives llama.cpp servers a per-request thinking budget, and aborts and re-issues a reply that still thinks too long, with a "stop deliberating, act with a tool" note appended (append-only, so the prompt cache survives) | on for local models |
+| [`lfm3`](extensions/lfm3/README.md) | Liquid AI's LFM3 on CPU: d1-2B answers yes/no and choice questions about one piece of text in one pass, with calibrated probabilities, as a pi classifier and the `lfm3_decide` tool. LFM3-1.7B is registered as an experimental chat model. Off by default (`PI_LFM3=on`). The board's Watcher and task titles were tried and failed the POC, so nothing routes to it | **new, off by default** |
 | [`verify-gate`](extensions/verify-gate/README.md) | runs the project's check (`.pi/verify` or AGENTS.md) before the agent may finish after editing files; on failure the agent gets the output for another round (at most 2). Adds a prompt line: tests must not share assumptions with the code | stable |
 | [`herdr`](extensions/herdr/README.md) | herdr agents, workspaces, panes and the herdr-projects board as typed JSON tools, first-class in codemode: list/read/stuck helpers for agents, list/details/show for tasks, and gated write tools for prompting an agent or adding/telling/reporting a task (off unless `PI_HERDR_WRITES=on`, and `confirm: true`). `herdr_agent_stuck` uses HRN-15's local classifier when it is registered and falls back to herdr status | **new** |
 | [`d3-context`](experimental/d3-context/README.md) | lets a local decision model (vllm-d3 over the System One wire) keep, summarise or drop old tool output and pin key lines, editing the context at subtask boundaries; needs `D3_URL`, not in the package manifest (load with `pi -e`). Result: no gain, higher cost with cached providers: [RESULTS.md](experimental/d3-context/RESULTS.md) | **experimental** |
@@ -176,6 +178,34 @@ results, so they are tracked through the codemode call itself.
   append-only and silent in normal runs.
 - On the local sample the guard stayed silent on every ticket, and one injection run went the
   wrong way after its note. Watch it with this model.
+
+### lfm3
+
+**What it fixes.** Small decisions that would otherwise take a big-model turn or a person: is an
+agent stuck or waiting for a permission prompt, is a review finding blocking, is an issue a bug or
+a feature and which repo, are two issues the same. Liquid AI's **d1-2B** answers up to six yes/no
+and choice questions about one piece of text in one pass, with calibrated probabilities and no
+generated tokens. It costs nothing, runs on the CPU, and is registered as a pi classifier and as
+the `lfm3_decide` tool.
+
+**Enable and configure.** Off by default. `PI_LFM3=on`, or `{"enabled":true}` in
+`~/.pi/agent/lfm3.json`, after starting the two CPU servers in the
+[README](extensions/lfm3/README.md). `/lfm3` shows whether they answer; `/lfm3 on|off` switches the
+provider for the session. When a server is down the tool says so and the agent decides without it.
+
+**Measured:**
+
+| sample | result |
+|---|---|
+| 40 classification cases, through headless `pi -p --mode json` and pi's classifier registry | **40/40** (stuck uses three questions in one request; one generic stuck question was 37/40); median 454 ms, p90 924 ms |
+| d1-2B footprint | 1.85 GiB Q8 file, 1.95 GB RSS at 32K context |
+| 16 realistic screens, the board's own Watcher prompt | valid JSON 15/16, `n` 1/16, status line 13/16 (rule baseline 13/16), progress 1/16; **not integrated** |
+| 8 task titles | 3/8 clean (paragraphs, `</think>` leaks, too long); **not integrated** |
+
+The model read the Watcher example's `n` as the minutes and its progress as elapsed time, so the
+board's `read_answer` would drop the row. The chat model is registered as `lfm3/lfm3-1.7b` for
+experiments, with `:off` recommended; nothing routes to it. Gate and raw rows:
+[bench/GATE.md](extensions/lfm3/bench/GATE.md), [results](extensions/lfm3/bench/results/summary.md).
 
 ### thinking-guard and lessons: cloud numbers only
 
