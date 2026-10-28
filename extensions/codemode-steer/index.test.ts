@@ -47,9 +47,10 @@ test("config: modes, thresholds, profile and malformed values", () => {
 });
 
 test("local detection covers provider names and private base URLs, not cloud endpoints", () => {
-	for (const url of ["http://127.0.0.1:8080", "http://localhost:1234/v1", "http://10.1.2.3:8000/v1", "http://192.168.1.5/v1", "http://172.20.0.2/v1", "http://box.local/v1"])
+	for (const url of ["http://127.0.0.1:8080", "http://localhost:1234/v1", "http://10.1.2.3:8000/v1", "http://192.168.1.5/v1", "http://172.20.0.2/v1", "http://100.64.1.2/v1", "http://" + "box." + "ts.net/v1", "http://[fd12::1]:8000/v1", "http://box.local/v1"])
 		assert.equal(isLocalUrl(url), true, url);
 	for (const url of ["https://api.deepseek.com", "https://openrouter.ai/api/v1", "http://172.32.0.1/v1", // no-secrets: allow (synthetic public fixture for the private-range boundary)
+		"http://100.128.0.1/v1", // no-secrets: allow (synthetic public fixture for the CGNAT boundary)
 		"not a url"])
 		assert.equal(isLocalUrl(url), false, url);
 	assert.equal(isLocalModel({ provider: "llama.cpp", baseUrl: "https://example.com" }), true);

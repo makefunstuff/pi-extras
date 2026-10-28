@@ -45,8 +45,8 @@ While `codemode` is active:
 1. **Prompt.** Replaces the one-line codemode snippet with a decision rule, one or two guidelines
    and a working example. Local models (detected by provider name or a loopback/private-network
    base URL) get a shorter version and an explicit "raw JavaScript, no markdown fence" hint.
-2. **Call boundary.** The default `nudge` mode appends one short note after the threshold and never
-   blocks. In opt-in `enforce` mode the first `PI_CODEMODE_STEER_AFTER` direct calls (default 4)
+2. **Call boundary.** The default `nudge` mode never blocks: once four direct calls have run, the
+   next (fifth) call's result carries one short note. In opt-in `enforce` mode the first `PI_CODEMODE_STEER_AFTER` direct calls (default 4)
    run normally; further direct calls are blocked with an error that names codemode and shows the
    script shape. Calls made from inside a script (`parentToolCallId`) and
    codemode itself are never blocked. After `PI_CODEMODE_STEER_BLOCKS` blocks (default 2) in one
@@ -62,7 +62,7 @@ Modes:
 
 | `PI_CODEMODE_STEER` | behavior |
 |---|---|
-| `nudge` (default) | prompt hints + one note appended to a tool result after the threshold; never blocks |
+| `nudge` (default) | prompt hints + one note appended to the fifth direct call's result; never blocks |
 | `enforce` | prompt hints + block direct calls after the threshold, with a give-up limit |
 | `hint` | prompt hints only |
 | `off` | does nothing |
@@ -72,12 +72,12 @@ Settings:
 | variable | default | meaning |
 |---|---:|---|
 | `PI_CODEMODE_STEER` | `nudge` | `off`, `hint`, `nudge`, `enforce` |
-| `PI_CODEMODE_STEER_AFTER` | `4` | direct calls allowed before steering (0 blocks the first one) |
+| `PI_CODEMODE_STEER_AFTER` | `4` | direct calls allowed before steering; nudge lands on the next result, enforce blocks the next call (0 starts at the first call) |
 | `PI_CODEMODE_STEER_BLOCKS` | `2` | blocked direct calls per prompt before giving up |
 | `PI_CODEMODE_STEER_PROFILE` | `auto` | `auto`, `cloud` or `local`; overrides detection |
 
 The extension is on for every model once the package is installed, in `nudge` mode, which never
-blocks; the measurement below is DeepSeek Flash only. For stronger steering set
+blocks; its note lands on the fifth direct call's result; the measurement below is DeepSeek Flash only. For stronger steering set
 `PI_CODEMODE_STEER=enforce`; for a long, strictly sequential task use `hint` or `off`.
 `/codemode-steer` shows the mode, the current prompt's counters and the detected profile. To unload it: `"-extensions/codemode-steer/index.ts"` in the package's `extensions` filter.
 
@@ -98,11 +98,11 @@ A `nudge` run on the same 3 tickets with the same threshold (1 round, 3 runs) pa
 only 1 codemode call of 24 (4.2 %). That is the safe default; `enforce` is the opt-in setting for
 stronger steering. The nudge rows are in `bench/results/nudge.jsonl`.
 
-**Local models are not measured here.** The local endpoints (`llama.cpp`, Strata, vLLM) were not
-reachable from the machine that ran this eval, and the task forbade starting or switching GPU
-servers. The local profile and its hint are covered by unit tests with fake models; the usage
-numbers above are cloud only. The recorded sessions show local Strata Swift already used codemode
-more than any cloud model (5.5 %), but most local models used it never.
+**Local models are not evaluated.** No request was sent to a local or GPU model server: those
+servers are reserved for the owner's tuning. The local profile and its hint are covered by unit
+tests with fake models; every usage number above is cloud only. The recorded sessions show local
+Strata Swift already used codemode more than any cloud model (5.5 %), but most local models used it
+never.
 
 ## Recommendations outside this extension
 

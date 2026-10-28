@@ -47,13 +47,16 @@ export function isLocalUrl(url: string | undefined): boolean {
 	if (!url) return false;
 	let host: string;
 	try {
-		host = new URL(url).hostname.toLowerCase();
+		host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, "");
 	} catch {
 		return false;
 	}
 	if (host === "localhost" || host === "::1" || host.endsWith(".local")) return true;
 	if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return true;
-	return /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+	if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+	if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host)) return true; // CGNAT / tailnet
+	if (host.endsWith(".ts.net")) return true;
+	return /^(fc|fd|fe80)/.test(host); // IPv6 unique-local and link-local
 }
 
 /** A local model: a local provider name, or a base URL on loopback, a private network or `.local`. */
