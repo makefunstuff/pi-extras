@@ -366,3 +366,50 @@ test("config: file and env, no built-in addresses", () => {
 	assert.equal(d.idleMs, 600_000);
 	for (const b of Object.values(d.backends)) assert.equal(b.health, undefined, "no address is built in");
 });
+
+const extCtx = (provider: string) => {
+	const ctx = fakeCtx({
+		model: { provider, id: "m" },
+		sessionManager: { getSessionId: () => "s1" },
+		modelRegistry: { getApiKeyForProvider: async (p: string) => (p === "strata" ? KEY : undefined) },
+	});
+	return ctx;
+};
+
+test("extension: quitting while Strata still loads gives up the swap and brings the router back", async () => {
+	const config = await makeConfig();
+	setUnits({ loadMs: { [STRATA]: 60_000 } });
+	const pi = fakePi();
+	gpuSwap(pi as any, { config });
+	const ctx = extCtx("strata");
+	await pi.emit("model_select", { type: "model_select", model: { provider: "strata", id: "m" }, source: "set" }, ctx);
+	await sleep(150);
+	assert.ok(units().active[STRATA]);
+	await pi.emit("session_shutdown", { type: "session_shutdown", reason: "quit" }, ctx);
+	assert.ok(units().active[ROUTER] && !units().active[STRATA], "router back at once");
+	const lease = readLease(config.leaseFile);
+	assert.deepEqual(lease.sessions, {});
+	assert.equal(lease.switching, undefined);
+	assert.equal(lease.backend, "router");
+});
+
+test("extension: a model pick during a running turn waits for the turn; the turn keeps its backend", async () => {
+	const config = await makeConfig();
+	const pi = fakePi();
+	gpuSwap(pi as any, { config });
+	const ctx = extCtx("strata");
+	await pi.emit("agent_start", { type: "agent_start" }, ctx);
+	await pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, ctx);
+	assert.ok(units().active[STRATA]);
+	// the user picks the 27B while the turn still runs on Strata
+	ctx.model = { provider: "llama.cpp", id: "qwen3.8-27b" };
+	await pi.emit("model_select", { type: "model_select", model: ctx.model, source: "set" }, ctx);
+	await sleep(150);
+	assert.ok(units().active[STRATA] && !units().log.includes(`stop ${STRATA}`), "Strata not stopped under the turn");
+	await pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, ctx); // the turn's next request
+	assert.ok(units().active[STRATA], "the turn's request still went to Strata");
+	await pi.emit("agent_end", { type: "agent_end" }, ctx);
+	await sleep(150);
+	assert.ok(units().active[ROUTER] && !units().active[STRATA], "the warm-up ran after the turn");
+	await pi.emit("session_shutdown", { type: "session_shutdown", reason: "quit" }, ctx);
+});

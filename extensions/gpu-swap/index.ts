@@ -28,6 +28,10 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 	let swapper: Swapper | undefined;
 	let heartbeat: ReturnType<typeof setInterval> | undefined;
 	let ui: ExtensionContext["ui"] | undefined;
+	// The model of the running agent loop: pi keeps it for the whole run even if another model is
+	// picked meanwhile, so its requests must keep their backend. A pick during a run warms up after it.
+	let runModel: ExtensionContext["model"];
+	let pendingWarm: string | undefined;
 
 	const status = (text: string | undefined) => ui?.setStatus(STATUS_KEY, text);
 	const notify = (message: string, level: "info" | "warning" | "error") => ui?.notify(message, level);
@@ -61,22 +65,30 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 	});
 
 	// Warm-up: start the swap now, so loading overlaps typing. Errors surface here and again on the request.
+	const warm = (s: Swapper, target: string) => s.ensure(target).catch((e) => !isAbort(e) && notify((e as Error).message, "error"));
+
 	pi.on("model_select", (event, ctx) => {
 		const target = backendFor(config, event.model?.provider);
+		pendingWarm = undefined;
 		if (!target) return;
 		const s = session(ctx);
 		startHeartbeat(s);
-		s.ensure(target).catch((e) => !isAbort(e) && notify((e as Error).message, "error"));
+		if (runModel) pendingWarm = target; // never stop the backend under a running turn
+		else warm(s, target);
+	});
+
+	pi.on("agent_start", (_event, ctx) => {
+		runModel = ctx.model;
 	});
 
 	// Awaited by pi before each provider request: hold the request until its backend answers.
 	pi.on("before_provider_request", async (_event, ctx) => {
-		const target = backendFor(config, ctx.model?.provider);
+		const target = backendFor(config, (runModel ?? ctx.model)?.provider);
 		if (!target) return undefined;
 		const s = session(ctx);
 		startHeartbeat(s);
-		s.markBusy(true);
 		try {
+			s.markBusy(true);
 			await s.ensure(target, ctx.signal);
 		} catch (e) {
 			// pi catches a throw here and sends the request anyway, so stop the turn instead.
@@ -89,7 +101,11 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 	});
 
 	pi.on("agent_end", () => {
-		swapper?.markBusy(false);
+		runModel = undefined;
+		if (!swapper) return;
+		swapper.markBusy(false);
+		if (pendingWarm) warm(swapper, pendingWarm);
+		pendingWarm = undefined;
 	});
 
 	// pi quits: drop this process from the lease, and if it was the last user of the non-default
@@ -99,7 +115,9 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 		heartbeat = undefined;
 		const s = swapper;
 		swapper = undefined;
-		if (s && event.reason === "quit") await s.maintain(true).catch(() => undefined);
+		if (!s) return;
+		await s.cancel(); // a swap still loading is given up (its backend is left in the lease for switch-back)
+		if (event.reason === "quit") await s.maintain(true).catch(() => undefined);
 	});
 
 	pi.registerCommand(COMMAND, {

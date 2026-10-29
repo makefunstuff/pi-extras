@@ -88,6 +88,11 @@ ready, which is too early for a backend that loads for 90 s.
   GPUs, and a backend started by hand is not recorded until a pi session next checks.
 - Switch-back runs from a live pi session's heartbeat. If every pi session dies at once, the
   non-default backend stays up until the next pi session starts and its heartbeat sees no claim.
+- Only agent-loop requests pass `before_provider_request`. A compaction or summary request does
+  not, so `/compact` after the backend was switched away fails; send a prompt first.
+- A model picked while a turn runs warms up after the turn: the turn keeps its backend.
+- `readyTimeoutSeconds` counts from when the start command returns (`systemctl start` returns at
+  once for a simple unit).
 - One machine: the lease is a local file, and a process is alive if `kill(pid, 0)` says so.
 
 ## Tests

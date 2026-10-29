@@ -21,7 +21,7 @@ export const isAbort = (e: unknown) => e instanceof SwapError && e.message === A
 type Decision =
 	| { kind: "ready" }
 	| { kind: "wait"; text: string }
-	| { kind: "blocked"; holder: string; by: SessionEntry[] }
+	| { kind: "blocked"; holder: string; by: SessionEntry[]; own?: boolean }
 	| { kind: "switch"; from?: string };
 
 const COMMAND_TIMEOUT_MS = 120_000;
@@ -192,6 +192,13 @@ export class Swapper {
 		});
 	}
 
+	/** Give up every swap this session has in flight and wait until they have cleaned up. */
+	async cancel(): Promise<void> {
+		const all = [...this.inflight.values()];
+		for (const e of all) e.controller.abort();
+		await Promise.allSettled(all.map((e) => e.promise));
+	}
+
 	private async acquire(target: string, signal?: AbortSignal): Promise<void> {
 		const b = this.config.backends[target];
 		if (!b) throw new SwapError(`gpu-swap: unknown backend "${target}"`);
@@ -206,6 +213,7 @@ export class Swapper {
 				const sw = lease.switching;
 				// Someone else's switch to another backend: wait for it to finish first.
 				if (sw && sw.to !== target) {
+					if (sw.by === this.id) return { kind: "blocked", holder: sw.to, by: [], own: true }; // our own switch-back
 					return { kind: "blocked", holder: sw.to, by: [lease.sessions[sw.by]].filter(Boolean) };
 				}
 				const blockers = Object.entries(lease.sessions)
@@ -247,7 +255,8 @@ export class Swapper {
 							`${who ? ` (${who})` : ""}. gpu-swap never takes them from a live session; try again once it is idle, or pick a model on the ${holder}.`,
 					);
 				}
-				this.deps.status?.(`GPUs busy: ${holder} in use by another pi session${who ? ` (${who})` : ""}; waiting… (${ago(Date.now() - started)})`);
+				if (d.own) this.deps.status?.(`Waiting for the switch to the ${holder}… (${ago(Date.now() - started)})`);
+				else this.deps.status?.(`GPUs busy: ${holder} in use by another pi session${who ? ` (${who})` : ""}; waiting… (${ago(Date.now() - started)})`);
 				await sleep(this.config.pollMs, signal);
 				continue;
 			}
