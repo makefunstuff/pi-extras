@@ -5,6 +5,13 @@ All versions of pi-extras. The package is installed from git
 
 ## Unreleased
 
+- **`gpu-swap`** (new, off by default) — picking a model swaps the GPU backend it needs (Strata or
+  the llama.cpp router, or any backends in its config) through `systemctl start|stop` as the user.
+  The swap starts on `model_select`; `before_provider_request` waits until the backend answers,
+  with a status line, and fails after a timeout. A lease file shared by every pi session on the
+  machine, with heartbeats, means a session never takes the GPUs from another live one; the
+  default backend comes back after an idle time (10 min) or when the last user quits. No address
+  is built in. [README](extensions/gpu-swap/README.md)
 - **New extension `herdr`**: herdr and the herdr-projects board as typed, JSON-returning pi tools,
   made for codemode. Read-only by default: `herdr_agent_list`, `herdr_agent_read`,
   `herdr_agent_stuck`, `herdr_workspace_list`, `herdr_pane_list`, `herdr_pane_read`,
