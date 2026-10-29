@@ -430,3 +430,56 @@ test("extension: picking a cloud model during a warm-up cancels it, and switch-b
 	await pi.emit("session_shutdown", { type: "session_shutdown", reason: "quit" }, ctx);
 	assert.ok(units().active[ROUTER] && !units().active[STRATA]);
 });
+
+test("two sessions leaving Strata for the router don't block each other", async () => {
+	const config = await makeConfig({ leaseWaitMs: 2_000 });
+	const a = new Swapper(config, deps(), "a");
+	const b = new Swapper(config, deps(), "b");
+	await a.ensure("strata");
+	await b.ensure("strata");
+	a.markBusy(true);
+	b.markBusy(true);
+	const t0 = Date.now();
+	await Promise.all([a.ensure("router"), b.ensure("router")]);
+	assert.ok(Date.now() - t0 < 1_000, "no wait for each other's old claim");
+	assert.ok(units().active[ROUTER] && !units().active[STRATA]);
+});
+
+test("extension: /new during a warm-up keeps it going, even once pi has invalidated the old ctx", async () => {
+	const config = await makeConfig();
+	const pi = fakePi();
+	gpuSwap(pi as any, { config });
+	const registry = { getApiKeyForProvider: async (p: string) => (p === "strata" ? KEY : undefined) };
+	let stale = false;
+	const ctx = fakeCtx({ model: { provider: "strata", id: "m" }, sessionManager: { getSessionId: () => "s1" } });
+	Object.defineProperty(ctx, "modelRegistry", {
+		get: () => {
+			if (stale) throw new Error("This extension ctx is stale");
+			return registry;
+		},
+	});
+	await pi.emit("model_select", { type: "model_select", model: { provider: "strata", id: "m" }, source: "set" }, ctx);
+	await sleep(50);
+	await pi.emit("session_shutdown", { type: "session_shutdown", reason: "new" }, ctx);
+	stale = true;
+	await sleep(400);
+	assert.ok(units().active[STRATA]);
+	const lease = readLease(config.leaseFile);
+	assert.equal(lease.sessions[String(process.pid)].backend, "strata", "the claim stays");
+	assert.equal(lease.switching, undefined, "the warm-up finished");
+	assert.ok(!ctx.notes.some((n: any) => n.level === "error"));
+});
+
+test("picking Strata again while a cancelled Strata start still runs starts a fresh swap", async () => {
+	const config = await makeConfig();
+	const s = new Swapper(config, deps(), "a");
+	const w1 = s.ensure("strata").catch((e) => e);
+	await sleep(10);
+	const w2 = s.ensure("router").catch((e) => e); // cancels w1
+	const w3 = s.ensure("strata"); // must not join the cancelled w1
+	await w3;
+	assert.match(String(await w1), /aborted/);
+	await w2;
+	assert.ok(units().active[STRATA]);
+	assert.equal(readLease(config.leaseFile).sessions.a.backend, "strata");
+});

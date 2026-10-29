@@ -92,7 +92,9 @@ export class Swapper {
 		this.config = config;
 		this.deps = deps;
 		this.id = id;
-		this.timing = { idleMs: config.idleMs, staleMs: config.staleMs, switchMs: config.readyTimeoutMs + Math.max(COMMAND_TIMEOUT_MS, config.readyTimeoutMs) + 30_000 };
+		this.timing = { idleMs: config.idleMs, staleMs: config.staleMs, // The longest a switch can take: a stop per other backend, the start, the ready wait.
+			switchMs: (Object.keys(config.backends).length - 1) * COMMAND_TIMEOUT_MS + Math.max(COMMAND_TIMEOUT_MS, config.readyTimeoutMs) + config.readyTimeoutMs + 30_000,
+		};
 	}
 
 	setStatus(fn: SwapDeps["status"]) {
@@ -169,7 +171,7 @@ export class Swapper {
 	ensure(target: string, signal?: AbortSignal): Promise<void> {
 		for (const [other, e] of this.inflight) if (other !== target) e.controller.abort();
 		let entry = this.inflight.get(target);
-		if (!entry) {
+		if (!entry || entry.controller.signal.aborted) {
 			const controller = new AbortController();
 			const earlier = Promise.allSettled([...this.inflight.values()].map((e) => e.promise));
 			const promise: Promise<void> = earlier
@@ -216,8 +218,9 @@ export class Swapper {
 					if (sw.by === this.id) return { kind: "blocked", holder: sw.to, by: [], own: true }; // our own switch-back
 					return { kind: "blocked", holder: sw.to, by: [lease.sessions[sw.by]].filter(Boolean) };
 				}
+				// Only a claim on the backend that holds the GPUs blocks; a claim elsewhere is a wish, like ours.
 				const blockers = Object.entries(lease.sessions)
-					.filter(([id, s]) => id !== this.id && s.backend && s.backend !== target && claimActive(s, s.backend, this.timing, now))
+					.filter(([id, s]) => id !== this.id && s.backend && s.backend !== target && s.backend === lease.backend && claimActive(s, s.backend, this.timing, now))
 					.map(([, s]) => s);
 				if (healthy) {
 					// It answers, so it already holds the GPUs (whatever the lease said).
@@ -231,7 +234,12 @@ export class Swapper {
 					me.lastUsed = now;
 					return { kind: "wait", text: loading() };
 				}
-				if (blockers.length) return { kind: "blocked", holder: blockers[0].backend!, by: blockers };
+				if (blockers.length) {
+					// Waiting for `target` withdraws our claim on the old backend, so two sessions moving the same way never block each other.
+					me.backend = target;
+					me.lastUsed = now;
+					return { kind: "blocked", holder: blockers[0].backend!, by: blockers };
+				}
 				const from = lease.backend;
 				lease.switching = { to: target, by: this.id, since: now };
 				lease.backend = target;

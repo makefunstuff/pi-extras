@@ -33,14 +33,24 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 	let running = false;
 	let pendingWarm: string | undefined;
 
-	const status = (text: string | undefined) => ui?.setStatus(STATUS_KEY, text);
-	const notify = (message: string, level: "info" | "warning" | "error") => ui?.notify(message, level);
+	const status = (text: string | undefined) => {
+		try {
+			ui?.setStatus(STATUS_KEY, text);
+		} catch {}
+	};
+	const notify = (message: string, level: "info" | "warning" | "error") => {
+		try {
+			ui?.notify(message, level);
+		} catch {} // a ctx pi has already replaced
+	};
 
 	const session = (ctx: ExtensionContext): Swapper => {
 		ui = ctx.ui;
 		if (!swapper) {
+			// The registry itself, not ctx: pi invalidates ctx on /new or /reload while a warm-up still runs.
+			const registry = ctx.modelRegistry;
 			swapper = new Swapper(config, {
-				apiKey: (provider) => ctx.modelRegistry.getApiKeyForProvider(provider),
+				apiKey: async (provider) => registry.getApiKeyForProvider(provider),
 				status,
 			});
 		}
@@ -49,10 +59,18 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 
 	const startHeartbeat = (s: Swapper) => {
 		if (heartbeat) return;
+		let lastWarning = "";
 		heartbeat = setInterval(() => {
 			s.maintain().then(
-				(from) => from && notify(`gpu-swap: ${s.label(from)} idle; ${s.label(config.defaultBackend)} is back`, "info"),
-				(e) => notify(`gpu-swap: ${(e as Error).message}`, "warning"),
+				(from) => {
+					lastWarning = "";
+					if (from) notify(`gpu-swap: ${s.label(from)} idle; ${s.label(config.defaultBackend)} is back`, "info");
+				},
+				(e) => {
+					const m = `gpu-swap: ${(e as Error).message}`;
+					if (m !== lastWarning) notify(m, "warning"); // once, not every heartbeat
+					lastWarning = m;
+				},
 			);
 		}, config.heartbeatMs);
 		heartbeat.unref?.();
@@ -87,18 +105,23 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 
 	// Awaited by pi before each provider request: hold the request until its backend answers.
 	pi.on("before_provider_request", async (_event, ctx) => {
-		const target = backendFor(config, ctx.model?.provider);
-		if (!target) return undefined;
-		const s = session(ctx);
-		startHeartbeat(s);
-		try {
-			s.markBusy(true);
-			await s.ensure(target, ctx.signal);
-		} catch (e) {
-			// pi catches a throw here and sends the request anyway, so stop the turn instead.
-			if (!ctx.signal?.aborted) {
+		// A newer model pick can cancel the swap this request waits on: then wait for the current model's.
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const target = backendFor(config, ctx.model?.provider);
+			if (!target) return undefined;
+			const s = session(ctx);
+			startHeartbeat(s);
+			try {
+				s.markBusy(true);
+				await s.ensure(target, ctx.signal);
+				return undefined;
+			} catch (e) {
+				if (ctx.signal?.aborted) return undefined; // Esc
+				if (isAbort(e)) continue;
+				// pi catches a throw here and sends the request anyway, so stop the turn instead.
 				notify((e as Error).message, "error");
 				ctx.abort();
+				return undefined;
 			}
 		}
 		return undefined;

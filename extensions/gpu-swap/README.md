@@ -94,6 +94,8 @@ ready, which is too early for a backend that loads for 90 s.
   if pi sends the run's next turn to the new model first, that request swaps.
 - `readyTimeoutSeconds` counts from when the start command returns (`systemctl start` returns at
   once for a simple unit).
+- A virtual (routed) model is seen as its virtual provider, so a request it routes to Strata or the
+  router is not swapped; pick the physical model.
 - The lease is per Unix user (it lives in `$XDG_RUNTIME_DIR`); set `leaseFile` to a shared path
   if several users run pi on one GPU host.
 - One machine: the lease is a local file, and a process is alive if `kill(pid, 0)` says so.

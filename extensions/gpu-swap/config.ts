@@ -58,7 +58,7 @@ export const DEFAULT_BACKENDS: Record<string, BackendConfig> = {
 export const DEFAULT_PROVIDERS: Record<string, string> = { strata: "strata", "llama.cpp": "router" };
 
 function runtimeDir(env: NodeJS.ProcessEnv): string {
-	return env.XDG_RUNTIME_DIR || tmpdir();
+	return env.XDG_RUNTIME_DIR || join(tmpdir(), `pi-gpu-swap-${process.getuid?.() ?? "user"}`);
 }
 
 export const DEFAULTS = (env: NodeJS.ProcessEnv = process.env): GpuSwapConfig => ({
