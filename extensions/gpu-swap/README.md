@@ -19,7 +19,7 @@ says `"enabled": true`.
   `gpu-swap: Strata did not answer … within 300 s` and stops the turn (pi would send the request
   anyway after a hook error). A unit that stops while it loads fails at once and names the unit; a
   backend left up by a failed switch is stopped by the next switch-back. Esc stops the wait; the
-  warm-up goes on. Picking another model during a warm-up cancels it.
+  warm-up goes on. Picking another model (a cloud one too) during a warm-up cancels it.
 - **Lease.** One file shared by every pi session on the machine
   (`$XDG_RUNTIME_DIR/pi-gpu-swap/lease.json`). It records which backend holds the GPUs and which pi
   processes use which backend, with heartbeats. A session's claim lasts while its heartbeat is fresh
@@ -90,9 +90,12 @@ ready, which is too early for a backend that loads for 90 s.
   non-default backend stays up until the next pi session starts and its heartbeat sees no claim.
 - Only agent-loop requests pass `before_provider_request`. A compaction or summary request does
   not, so `/compact` after the backend was switched away fails; send a prompt first.
-- A model picked while a turn runs warms up after the turn: the turn keeps its backend.
+- A model picked while the agent runs warms up when the run ends, so a running stream is never cut;
+  if pi sends the run's next turn to the new model first, that request swaps.
 - `readyTimeoutSeconds` counts from when the start command returns (`systemctl start` returns at
   once for a simple unit).
+- The lease is per Unix user (it lives in `$XDG_RUNTIME_DIR`); set `leaseFile` to a shared path
+  if several users run pi on one GPU host.
 - One machine: the lease is a local file, and a process is alive if `kill(pid, 0)` says so.
 
 ## Tests

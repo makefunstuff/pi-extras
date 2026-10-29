@@ -28,9 +28,9 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 	let swapper: Swapper | undefined;
 	let heartbeat: ReturnType<typeof setInterval> | undefined;
 	let ui: ExtensionContext["ui"] | undefined;
-	// The model of the running agent loop: pi keeps it for the whole run even if another model is
-	// picked meanwhile, so its requests must keep their backend. A pick during a run warms up after it.
-	let runModel: ExtensionContext["model"];
+	// A pick during an agent run must not stop the backend under a stream still running: its warm-up
+	// waits for the run's end. The run's next request (pi switches models between turns) still swaps.
+	let running = false;
 	let pendingWarm: string | undefined;
 
 	const status = (text: string | undefined) => ui?.setStatus(STATUS_KEY, text);
@@ -70,20 +70,24 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 	pi.on("model_select", (event, ctx) => {
 		const target = backendFor(config, event.model?.provider);
 		pendingWarm = undefined;
-		if (!target) return;
+		if (!target) {
+			// A cloud pick: give up a warm-up nobody needs now (switch-back stops what it started).
+			void swapper?.cancel();
+			return;
+		}
 		const s = session(ctx);
 		startHeartbeat(s);
-		if (runModel) pendingWarm = target; // never stop the backend under a running turn
+		if (running) pendingWarm = target;
 		else warm(s, target);
 	});
 
-	pi.on("agent_start", (_event, ctx) => {
-		runModel = ctx.model;
+	pi.on("agent_start", () => {
+		running = true;
 	});
 
 	// Awaited by pi before each provider request: hold the request until its backend answers.
 	pi.on("before_provider_request", async (_event, ctx) => {
-		const target = backendFor(config, (runModel ?? ctx.model)?.provider);
+		const target = backendFor(config, ctx.model?.provider);
 		if (!target) return undefined;
 		const s = session(ctx);
 		startHeartbeat(s);
@@ -101,7 +105,7 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 	});
 
 	pi.on("agent_end", () => {
-		runModel = undefined;
+		running = false;
 		if (!swapper) return;
 		swapper.markBusy(false);
 		if (pendingWarm) warm(swapper, pendingWarm);
@@ -116,8 +120,9 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 		const s = swapper;
 		swapper = undefined;
 		if (!s) return;
+		if (event.reason !== "quit") return; // a swap in flight goes on, its claim with it
 		await s.cancel(); // a swap still loading is given up (its backend is left in the lease for switch-back)
-		if (event.reason === "quit") await s.maintain(true).catch(() => undefined);
+		await s.maintain(true).catch(() => undefined);
 	});
 
 	pi.registerCommand(COMMAND, {
