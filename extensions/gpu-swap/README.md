@@ -15,9 +15,11 @@ says `"enabled": true`.
 - **Wait on `before_provider_request`.** pi awaits this hook before each request. If the needed
   backend does not answer yet, gpu-swap switches (stops the holder, starts the needed one) and
   waits until its health URL answers, with a status line such as `Loading Strata… ~90 s (23 s)`.
-  The request then goes out. After `readyTimeoutSeconds` it gives up with an error such as
-  `gpu-swap: Strata did not answer … within 300 s`. A unit that stops while it loads fails at once
-  and names the unit.
+  The request then goes out. After `readyTimeoutSeconds` it gives up: it shows an error such as
+  `gpu-swap: Strata did not answer … within 300 s` and stops the turn (pi would send the request
+  anyway after a hook error). A unit that stops while it loads fails at once and names the unit; a
+  backend left up by a failed switch is stopped by the next switch-back. Esc stops the wait; the
+  warm-up goes on. Picking another model during a warm-up cancels it.
 - **Lease.** One file shared by every pi session on the machine
   (`$XDG_RUNTIME_DIR/pi-gpu-swap/lease.json`). It records which backend holds the GPUs and which pi
   processes use which backend, with heartbeats. A session's claim lasts while its heartbeat is fresh

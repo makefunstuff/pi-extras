@@ -14,6 +14,10 @@ export interface SwapDeps {
 
 export class SwapError extends Error {}
 
+const ABORTED = "gpu-swap: aborted";
+/** The wait was given up (Esc, or a newer model pick), not a failure to report. */
+export const isAbort = (e: unknown) => e instanceof SwapError && e.message === ABORTED;
+
 type Decision =
 	| { kind: "ready" }
 	| { kind: "wait"; text: string }
@@ -24,7 +28,7 @@ const COMMAND_TIMEOUT_MS = 120_000;
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
-		if (signal?.aborted) return reject(new SwapError("gpu-swap: aborted"));
+		if (signal?.aborted) return reject(new SwapError(ABORTED));
 		const t = setTimeout(done, ms);
 		function done() {
 			signal?.removeEventListener("abort", onAbort);
@@ -32,7 +36,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 		}
 		function onAbort() {
 			clearTimeout(t);
-			reject(new SwapError("gpu-swap: aborted"));
+			reject(new SwapError(ABORTED));
 		}
 		signal?.addEventListener("abort", onAbort, { once: true });
 	});
@@ -47,11 +51,37 @@ function run(argv: string[], timeoutMs = COMMAND_TIMEOUT_MS): Promise<{ ok: bool
 	});
 }
 
+/** `p`, or a rejection as soon as `signal` aborts (the work behind `p` goes on). */
+function untilAborted<T>(p: Promise<T>, signal: AbortSignal, onAbort: () => void): Promise<T> {
+	if (signal.aborted) {
+		onAbort();
+		return Promise.reject(new SwapError(ABORTED));
+	}
+	return new Promise((resolve, reject) => {
+		const abort = () => {
+			onAbort();
+			reject(new SwapError(ABORTED));
+		};
+		signal.addEventListener("abort", abort, { once: true });
+		p.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+	});
+}
+
+interface Inflight {
+	promise: Promise<void>;
+	controller: AbortController;
+	/** Callers that can give up (a request with its signal). */
+	waiters: number;
+	/** A caller that never gives up (the warm-up). */
+	kept: boolean;
+}
+
+const secs = (ms: number) => `${Number((ms / 1000).toFixed(ms < 10_000 ? 1 : 0))} s`;
 const ago = (ms: number) => (ms < 90_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`);
 
 export class Swapper {
 	readonly id: string;
-	private inflight = new Map<string, Promise<void>>();
+	private inflight = new Map<string, Inflight>();
 	private timing: LeaseTiming;
 
 	/** `id` names this pi process in the lease (one entry per process, so /new or /resume keeps its claim). */
@@ -62,7 +92,7 @@ export class Swapper {
 		this.config = config;
 		this.deps = deps;
 		this.id = id;
-		this.timing = { idleMs: config.idleMs, staleMs: config.staleMs, switchMs: config.readyTimeoutMs + 30_000 };
+		this.timing = { idleMs: config.idleMs, staleMs: config.staleMs, switchMs: config.readyTimeoutMs + Math.max(COMMAND_TIMEOUT_MS, config.readyTimeoutMs) + 30_000 };
 	}
 
 	setStatus(fn: SwapDeps["status"]) {
@@ -112,7 +142,7 @@ export class Swapper {
 		return /^(failed|inactive)$/m.test(r.out);
 	}
 
-	private async switchTo(target: string, from: string | undefined): Promise<string[]> {
+	private async switchTo(target: string, from: string | undefined, startTimeoutMs = Math.max(COMMAND_TIMEOUT_MS, this.config.readyTimeoutMs)): Promise<string[]> {
 		const notes: string[] = [];
 		const others = from ? [from] : Object.keys(this.config.backends);
 		for (const name of others) {
@@ -120,26 +150,46 @@ export class Swapper {
 			const b = this.config.backends[name];
 			const stop = b?.stop ?? (b?.unit ? [this.config.systemctl, "stop", b.unit] : undefined);
 			if (!stop) continue;
-			const r = await run(stop);
+			const r = await run(stop, Math.min(COMMAND_TIMEOUT_MS, startTimeoutMs));
 			if (!r.ok) notes.push(`${stop.join(" ")}: ${r.out}`);
 		}
 		const b = this.config.backends[target];
 		const start = b.start ?? [this.config.systemctl, "start", b.unit!];
-		const r = await run(start, Math.max(COMMAND_TIMEOUT_MS, this.config.readyTimeoutMs));
+		const r = await run(start, startTimeoutMs);
 		if (!r.ok) throw new SwapError(`gpu-swap: ${start.join(" ")} failed: ${r.out}${notes.length ? `\n${notes.join("\n")}` : ""}`);
 		return notes;
 	}
 
-	/** Make `target` hold the GPUs and answer, then return. Rejects with a SwapError on timeout or a held lease. */
+	/**
+	 * Make `target` hold the GPUs and answer, then return. Rejects with a SwapError on timeout or a
+	 * held lease. A pick of another backend cancels this session's earlier swap. With `signal` the
+	 * caller can stop waiting; the swap itself is cancelled only when no caller is left (a warm-up,
+	 * started without a signal, always stays).
+	 */
 	ensure(target: string, signal?: AbortSignal): Promise<void> {
-		const running = this.inflight.get(target);
-		if (running) return running;
-		const p = this.acquire(target, signal).finally(() => {
-			this.inflight.delete(target);
-			this.deps.status?.(undefined);
+		for (const [other, e] of this.inflight) if (other !== target) e.controller.abort();
+		let entry = this.inflight.get(target);
+		if (!entry) {
+			const controller = new AbortController();
+			const earlier = Promise.allSettled([...this.inflight.values()].map((e) => e.promise));
+			const promise: Promise<void> = earlier
+				.then(() => this.acquire(target, controller.signal))
+				.finally(() => {
+					if (this.inflight.get(target)?.promise === promise) this.inflight.delete(target);
+					if (!this.inflight.size) this.deps.status?.(undefined);
+				});
+			entry = { promise, controller, waiters: 0, kept: false };
+			this.inflight.set(target, entry);
+		}
+		if (!signal) {
+			entry.kept = true;
+			return entry.promise;
+		}
+		const e = entry;
+		e.waiters++;
+		return untilAborted(e.promise, signal, () => {
+			if (--e.waiters === 0 && !e.kept) e.controller.abort();
 		});
-		this.inflight.set(target, p);
-		return p;
 	}
 
 	private async acquire(target: string, signal?: AbortSignal): Promise<void> {
@@ -149,7 +199,7 @@ export class Swapper {
 		const leaseDeadline = started + this.config.leaseWaitMs;
 		const loading = () => `Loading ${b.label}…${b.loadSeconds ? ` ~${b.loadSeconds} s` : ""} (${ago(Date.now() - started)})`;
 		for (;;) {
-			if (signal?.aborted) throw new SwapError("gpu-swap: aborted");
+			if (signal?.aborted) throw new SwapError(ABORTED);
 			const healthy = await this.healthy(target);
 			const d = this.lease((lease, now): Decision => {
 				const me = this.me(lease, now);
@@ -215,7 +265,7 @@ export class Swapper {
 					}
 					if (Date.now() >= readyDeadline) {
 						throw new SwapError(
-							`gpu-swap: ${b.label} did not answer${b.health ? ` ${b.health}` : ""} within ${Math.round(this.config.readyTimeoutMs / 1000)} s${notes.length ? `\n${notes.join("\n")}` : ""}`,
+							`gpu-swap: ${b.label} did not answer${b.health ? ` ${b.health}` : ""} within ${secs(this.config.readyTimeoutMs)}${notes.length ? `\n${notes.join("\n")}` : ""}`,
 						);
 					}
 					await sleep(this.config.pollMs, signal);
@@ -229,7 +279,8 @@ export class Swapper {
 				this.lease((lease) => {
 					if (lease.switching?.by === this.id) {
 						delete lease.switching;
-						delete lease.backend; // unknown now: the next request checks what answers
+						// Its unit may be up (and the default one down): the switch-back stops it once nobody claims it.
+						lease.backend = target;
 					}
 					const me = lease.sessions[this.id];
 					if (me?.backend === target) delete me.backend;
@@ -273,11 +324,13 @@ export class Swapper {
 		});
 		if (!from) return undefined;
 		try {
-			await this.switchTo(def, from);
-		} catch {
+			// On quit pi waits for this with its screen already gone: keep it short.
+			await this.switchTo(def, from, leaving ? 30_000 : undefined);
+		} catch (e) {
 			this.lease((lease) => {
-				if (lease.switching?.by === this.id) delete lease.backend;
+				if (lease.switching?.by === this.id) lease.backend = from; // try again on the next heartbeat
 			});
+			throw e;
 		} finally {
 			this.lease((lease) => {
 				if (lease.switching?.by === this.id) delete lease.switching;

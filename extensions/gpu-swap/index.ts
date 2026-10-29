@@ -11,7 +11,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { backendFor, configPath, loadConfig, type GpuSwapConfig } from "./config.ts";
 import { readLease } from "./lease.ts";
-import { Swapper } from "./swap.ts";
+import { isAbort, Swapper } from "./swap.ts";
 
 export const STATUS_KEY = "gpu-swap";
 export const COMMAND = "gpu-swap";
@@ -66,7 +66,7 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 		if (!target) return;
 		const s = session(ctx);
 		startHeartbeat(s);
-		s.ensure(target).catch((e) => notify((e as Error).message, "error"));
+		s.ensure(target).catch((e) => !isAbort(e) && notify((e as Error).message, "error"));
 	});
 
 	// Awaited by pi before each provider request: hold the request until its backend answers.
@@ -79,14 +79,17 @@ export default function gpuSwap(pi: ExtensionAPI, options: GpuSwapOptions = {}) 
 		try {
 			await s.ensure(target, ctx.signal);
 		} catch (e) {
-			notify((e as Error).message, "error");
-			throw e;
+			// pi catches a throw here and sends the request anyway, so stop the turn instead.
+			if (!ctx.signal?.aborted) {
+				notify((e as Error).message, "error");
+				ctx.abort();
+			}
 		}
 		return undefined;
 	});
 
-	pi.on("agent_end", (_event, ctx) => {
-		if (swapper && backendFor(config, ctx.model?.provider)) swapper.markBusy(false);
+	pi.on("agent_end", () => {
+		swapper?.markBusy(false);
 	});
 
 	// pi quits: drop this process from the lease, and if it was the last user of the non-default

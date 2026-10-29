@@ -119,10 +119,60 @@ test("timeout: a backend that never answers fails with a clear error and leaves 
 	const config = await makeConfig({ readyTimeoutMs: 300 });
 	setUnits({ loadMs: { [STRATA]: 60_000 } });
 	const s = new Swapper(config, deps(), "a");
-	await assert.rejects(s.ensure("strata"), /Strata did not answer http:\/\/127\.0\.0\.1:\d+\/health within 0 s|Strata did not answer .* within/);
+	await assert.rejects(s.ensure("strata"), /Strata did not answer http:\/\/127\.0\.0\.1:\d+\/health within 0\.3 s/);
 	const lease = readLease(config.leaseFile);
 	assert.equal(lease.switching, undefined);
-	assert.equal(lease.backend, undefined, "unknown after a failed switch: the next request checks what answers");
+	assert.equal(lease.backend, "strata", "its unit may still be up");
+	assert.equal(lease.sessions.a.backend, undefined, "but nobody claims it");
+	// so the next heartbeat stops it and the router comes back
+	assert.equal(await s.maintain(), "strata");
+	assert.ok(units().active[ROUTER] && !units().active[STRATA]);
+});
+
+test("Esc stops a request's wait at once, even when it joined the warm-up; the warm-up goes on", async () => {
+	const config = await makeConfig();
+	setUnits({ loadMs: { [STRATA]: 600 } });
+	const s = new Swapper(config, deps(), "a");
+	const warm = s.ensure("strata");
+	const esc = new AbortController();
+	const req = s.ensure("strata", esc.signal);
+	setTimeout(() => esc.abort(), 100);
+	const t0 = Date.now();
+	await assert.rejects(req, /aborted/);
+	assert.ok(Date.now() - t0 < 300);
+	await warm;
+	assert.ok(units().active[STRATA]);
+});
+
+test("Esc with no warm-up cancels the swap's wait too", async () => {
+	const config = await makeConfig({ leaseWaitMs: 5_000 });
+	const b = new Swapper(config, deps(), "b");
+	await b.ensure("router");
+	const a = new Swapper(config, deps(), "a");
+	const esc = new AbortController();
+	const req = a.ensure("strata", esc.signal);
+	setTimeout(() => esc.abort(), 100);
+	await assert.rejects(req, /aborted/);
+	await sleep(100);
+	assert.ok(!units().log.includes(`start ${STRATA}`), "no Strata start after the wait was given up");
+});
+
+test("picking another model during a warm-up cancels it instead of waiting on itself", async () => {
+	const config = await makeConfig();
+	setUnits({ loadMs: { [STRATA]: 5_000 } });
+	const statuses: string[] = [];
+	const s = new Swapper(config, deps(statuses), "a");
+	const warm = s.ensure("strata");
+	await sleep(100);
+	const t0 = Date.now();
+	await s.ensure("router");
+	assert.ok(Date.now() - t0 < 1_000, "did not wait for the Strata load");
+	await assert.rejects(warm, /aborted/);
+	assert.ok(!statuses.some((t) => /another pi session/.test(t)));
+	assert.ok(units().active[ROUTER] && !units().active[STRATA]);
+	const lease = readLease(config.leaseFile);
+	assert.equal(lease.backend, "router");
+	assert.equal(lease.sessions.a.backend, "router");
 });
 
 test("a unit that stops while loading fails at once, naming the unit", async () => {
@@ -258,7 +308,7 @@ test("extension: model_select warms up, before_provider_request waits, quit swit
 	assert.ok(units().active[ROUTER] && !units().active[STRATA], "router back after the last session quit");
 });
 
-test("extension: a request that times out reports the error and rethrows", async () => {
+test("extension: a request that times out reports the error and stops the turn", async () => {
 	const config = await makeConfig({ readyTimeoutMs: 200 });
 	setUnits({ loadMs: { [STRATA]: 60_000 } });
 	const pi = fakePi();
@@ -268,7 +318,10 @@ test("extension: a request that times out reports the error and rethrows", async
 		sessionManager: { getSessionId: () => "s1" },
 		modelRegistry: { getApiKeyForProvider: async () => KEY },
 	});
-	await assert.rejects(pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, ctx), /Strata did not answer/);
+	let aborted = 0;
+	ctx.abort = () => void aborted++;
+	await pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, ctx);
+	assert.equal(aborted, 1, "pi ignores a throw here, so the turn is aborted");
 	assert.ok(ctx.notes.some((n: any) => n.level === "error" && /Strata did not answer/.test(n.message)));
 });
 
